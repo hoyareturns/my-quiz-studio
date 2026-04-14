@@ -1,27 +1,20 @@
 import streamlit as st
 import re
-import socket
 import time
 import pandas as pd
 import os
 import qrcode
 from io import BytesIO
+from collections import Counter
 
 # --- 설정 및 파일 경로 ---
 RESULTS_FILE = "quiz_results.csv"
-DEFAULT_PROMPT = """지금까지 내가 공부하고 질문한 내용을 바탕으로 가장 중요하고 자주 헷갈리는 개념 5문제를 출제해줘. 반드시 아래 형식을 엄격하게 지켜서 다른 설명 없이 텍스트만 출력해줘.
-
-[Q] 문제 내용
-[O] ①보기1 ②보기2 ③보기3 ④보기4 ⑤보기5
-[A] 정답 기호(예: ②)
-[K] 해당 문제의 핵심 키워드(오답 분석용)"""
-
-# 고정 서버 주소 설정 (사용자님의 커스텀 주소)
+WRONG_DATA_FILE = "wrong_answers.csv"
 APP_URL = "https://hoya-quiz-studio.streamlit.app"
-# 관리자 비밀번호 설정 (원하는 번호로 변경 가능)
-ADMIN_PASSWORD = "2662"
+ADMIN_PASSWORD = "1234"
 
-st.set_page_config(page_title="퀴즈 스튜디오", layout="centered")
+# 브라우저 설정
+st.set_page_config(page_title="우정 파괴 연구소", page_icon="🧪", layout="centered")
 
 # --- 전역 상태 공유 시스템 ---
 @st.cache_resource
@@ -30,23 +23,29 @@ def get_global_state():
 
 global_state = get_global_state()
 
+# --- 결과 및 오답 저장 로직 ---
+def save_result_and_wrongs(user_id, score, duration, wrong_keywords):
+    new_result = pd.DataFrame([[user_id, score, round(duration, 2), time.strftime('%H:%M:%S')]], 
+                               columns=['아이디', '점수', '소요시간(초)', '완료시간'])
+    new_result.to_csv(RESULTS_FILE, mode='a', header=not os.path.exists(RESULTS_FILE), index=False, encoding='utf-8-sig')
+    
+    if wrong_keywords:
+        wrong_df = pd.DataFrame([{"아이디": user_id, "키워드": k, "일시": time.strftime('%Y-%m-%d %H:%M:%S')} for k in wrong_keywords])
+        wrong_df.to_csv(WRONG_DATA_FILE, mode='a', header=not os.path.exists(WRONG_DATA_FILE), index=False, encoding='utf-8-sig')
+
+def get_weak_points():
+    if os.path.exists(WRONG_DATA_FILE):
+        df = pd.read_csv(WRONG_DATA_FILE)
+        counts = Counter(df['키워드'])
+        common = counts.most_common(3)
+        return ", ".join([f"{k}({c}번 탈탈 털림)" for k, c in common])
+    return "아직은 모두가 지성인인 척하는 중"
+
 # --- 세션 상태 관리 ---
 if 'user_id' not in st.session_state: st.session_state.user_id = ""
 if 'local_quiz_version' not in st.session_state: st.session_state.local_quiz_version = 0
 if 'start_time' not in st.session_state: st.session_state.start_time = None
 if 'quiz_finished' not in st.session_state: st.session_state.quiz_finished = False
-
-# --- 결과 저장 로직 ---
-def save_result(user_id, score, duration):
-    new_data = pd.DataFrame([[user_id, score, round(duration, 2), time.strftime('%H:%M:%S')]], 
-                            columns=['아이디', '점수', '소요시간(초)', '완료시간'])
-    new_data.to_csv(RESULTS_FILE, mode='a', header=not os.path.exists(RESULTS_FILE), index=False, encoding='utf-8-sig')
-
-def get_leaderboard():
-    if os.path.isfile(RESULTS_FILE):
-        df = pd.read_csv(RESULTS_FILE)
-        return df.sort_values(by=['점수', '소요시간(초)'], ascending=[False, True]).reset_index(drop=True)
-    return None
 
 def robust_parse(text):
     qs = re.findall(r"\[Q\d?\]\s*(.*)", text)
@@ -60,96 +59,108 @@ def robust_parse(text):
         if not opts: opts = [o.strip() for o in os_raw[i].split(',') if o.strip()]
         ans_char = as_raw[i].strip()[0] if as_raw[i] else "1"
         parsed.append({"q": qs[i].replace('**', '').strip(), "o": [o.strip() for o in opts],
-                       "a": ans_map.get(ans_char, 0), "k": ks[i] if i < len(ks) else "핵심개념"})
+                       "a": ans_map.get(ans_char, 0), "k": ks[i] if i < len(ks) else "미분류"})
     return parsed
 
 # --- UI 레이아웃 ---
-st.title("🏆 퀴즈 스튜디오")
+st.title("🧪 우정 파괴 연구소")
+st.caption("진정한 친구라면... 이 정도 문제는 맞춰야지?")
 
-# --- 사이드바: 관리자 설정 및 QR 코드 ---
 with st.sidebar:
-    st.header("📸 간편 접속 QR")
-    # QR 코드 생성 및 표시 (고정 주소 사용)
+    st.header("🤳 빨리 찍고 들어와")
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
-    qr.add_data(APP_URL)
-    qr.make(fit=True)
+    qr.add_data(APP_URL); qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
-    
-    buf = BytesIO()
-    img.save(buf)
-    st.image(buf.getvalue(), caption="카메라로 스캔하세요!")
-    st.code(APP_URL) # 복사용 주소
+    buf = BytesIO(); img.save(buf)
+    st.image(buf.getvalue(), caption="스캔해서 입장!")
     
     st.divider()
-    st.subheader(f"👥 접속 중: {len(global_state['active_users'])}명")
+    st.subheader(f"👥 현재 감시 중: {len(global_state['active_users'])}명")
     if global_state['active_users']:
         st.caption(", ".join(global_state['active_users']))
     
     st.divider()
-    # 관리자 인증 섹션
-    st.subheader("🔐 관리자 인증")
-    pw_input = st.text_input("비밀번호를 입력하세요", type="password")
+    st.subheader("👑 출제자(신)의 영역")
+    pw_input = st.text_input("비밀번호를 대라", type="password")
     
     if pw_input == ADMIN_PASSWORD:
-        st.success("인증 성공! 문제를 등록할 수 있습니다.")
-        admin_text = st.text_area("퀴즈 데이터 등록", value=DEFAULT_PROMPT, height=200)
-        if st.button("🚀 새 퀴즈 배포", use_container_width=True):
-            global_state['current_quiz'] = robust_parse(admin_text)
-            global_state['quiz_version'] = time.time()
-            global_state['active_users'] = []
-            if os.path.exists(RESULTS_FILE): os.remove(RESULTS_FILE)
-            st.rerun()
-    else:
-        st.info("비밀번호를 입력하면 문제 등록창이 나타납니다.")
+        weak_points = get_weak_points()
+        st.warning(f"📊 실시간 굴욕 데이터: {weak_points}")
+        
+        # 1. NotebookLM용 프롬프트 복사 영역
+        st.write("📋 **NotebookLM용 명령서**")
+        prompt_to_copy = f"""이 문서의 내용을 바탕으로 친구들과 풀 퀴즈 5문제를 만들어줘. 
+사람들이 자주 틀린 주제({weak_points})가 있다면 참고해줘.
+반드시 아래 형식을 엄격하게 지키고, 다른 설명 없이 텍스트만 출력해줘.
 
-# --- 메인 로직 ---
-if st.session_state.local_quiz_version != global_state['quiz_version']:
-    st.warning("🔔 새로운 퀴즈가 도착했습니다!")
-    if st.button("새 문제 불러오기"):
-        st.session_state.local_quiz_version = global_state['quiz_version']
-        st.session_state.quiz_finished = False
-        st.session_state.start_time = None
-        st.session_state.user_id = ""
-        st.rerun()
-
-if not global_state['current_quiz']:
-    st.info("관리자가 퀴즈를 배포할 때까지 대기 중입니다...")
-else:
-    if not st.session_state.user_id:
-        st.subheader("👤 입장하기")
-        u_id = st.text_input("아이디(이름)를 입력하세요")
-        if st.button("참여 시작"):
-            if u_id:
-                if u_id not in global_state['active_users']: global_state['active_users'].append(u_id)
-                st.session_state.user_id = u_id
-                st.session_state.local_quiz_version = global_state['quiz_version']
+[Q] 문제 내용
+[O] ①보기1 ②보기2 ③보기3 ④보기4 ⑤보기5
+[A] 정답 기호(예: ②)
+[K] 해당 문제의 핵심 키워드(오답 분석용)"""
+        
+        st.code(prompt_to_copy, language="text") # 클릭하면 자동 복사됨
+        st.caption("위 박스 오른쪽 버튼을 눌러 복사한 뒤 NotebookLM에 붙여넣으세요.")
+        
+        # 2. 퀴즈 데이터 입력창 (입력 후 배포 버튼)
+        st.divider()
+        admin_text = st.text_area("📦 NotebookLM 결과물 붙여넣기", height=200, placeholder="[Q] 문제1...")
+        
+        if st.button("🚀 오답 폭격 배포", use_container_width=True):
+            if admin_text:
+                global_state['current_quiz'] = robust_parse(admin_text)
+                global_state['quiz_version'] = time.time()
+                global_state['active_users'] = []
+                st.success("지옥의 퀴즈가 전송되었습니다.")
+                time.sleep(1) # 성공 메시지 보여줄 시간
                 st.rerun()
-    
-    elif not st.session_state.start_time and not st.session_state.quiz_finished:
-        my_pos = global_state['active_users'].index(st.session_state.user_id) + 1 if st.session_state.user_id in global_state['active_users'] else "?"
-        st.subheader(f"👋 반갑습니다, {st.session_state.user_id}님!")
-        st.info(f"📍 전체 {len(global_state['active_users'])}명 중 {my_pos}번째로 입장")
-        if st.button("🚀 퀴즈 시작!", use_container_width=True):
-            st.session_state.start_time = time.time()
-            st.rerun()
+            else:
+                st.error("데이터를 입력해야 배포하지!")
+    elif pw_input:
+        st.error("비번도 모르면서 어딜 들어와?")
 
+# --- 메인 퀴즈 로직 (이전과 동일) ---
+if st.session_state.local_quiz_version != global_state['quiz_version']:
+    st.info("🔔 새로운 우정 파괴 문제가 도착했습니다!")
+    if st.button("살아남으러 가기"):
+        st.session_state.local_quiz_version = global_state['quiz_version']
+        st.session_state.quiz_finished = False; st.session_state.start_time = None
+        st.session_state.user_id = ""; st.rerun()
+
+if global_state['current_quiz']:
+    if not st.session_state.user_id:
+        st.subheader("👤 본인 확인")
+        u_id = st.text_input("이름(또는 별명)을 적어라")
+        if st.button("입장하기"):
+            if u_id:
+                st.session_state.user_id = u_id
+                global_state['active_users'].append(u_id); st.rerun()
+    
     elif st.session_state.start_time and not st.session_state.quiz_finished:
         user_ans_list = []
         for i, item in enumerate(global_state['current_quiz']):
-            st.markdown(f"**Q{i+1}. {item['q']}**")
-            ans = st.radio(f"답안 {i}", item['o'], key=f"ans_{i}", index=None, label_visibility="collapsed")
+            st.markdown(f"#### Q{i+1}. {item['q']}")
+            ans = st.radio(f"답안{i}", item['o'], key=f"ans_{i}", index=None, label_visibility="collapsed")
             user_ans_list.append(ans)
+            st.divider()
         
-        if st.button("🏁 제출 및 종료", use_container_width=True):
+        if st.button("🏁 제출하고 심판받기", use_container_width=True):
             duration = time.time() - st.session_state.start_time
-            correct = sum(1 for i, item in enumerate(global_state['current_quiz']) if user_ans_list[i] == item['o'][item['a']])
-            save_result(st.session_state.user_id, (correct/len(global_state['current_quiz']))*100, duration)
+            wrong_ks = [global_state['current_quiz'][i]['k'] for i, ans in enumerate(user_ans_list) if ans != global_state['current_quiz'][i]['o'][global_state['current_quiz'][i]['a']]]
+            correct_count = len(global_state['current_quiz']) - len(wrong_ks)
+            
+            save_result_and_wrongs(st.session_state.user_id, (correct_count/len(global_state['current_quiz']))*100, duration, wrong_ks)
             if st.session_state.user_id in global_state['active_users']: global_state['active_users'].remove(st.session_state.user_id)
-            st.session_state.quiz_finished = True
-            st.rerun()
+            st.session_state.quiz_finished = True; st.rerun()
+    
+    elif not st.session_state.quiz_finished:
+        st.subheader(f"👋 {st.session_state.user_id}, 준비됐나?")
+        if st.button("🚀 전쟁 시작!", use_container_width=True):
+            st.session_state.start_time = time.time(); st.rerun()
 
-    elif st.session_state.quiz_finished:
-        st.header("📊 실시간 순위표")
-        leaderboard = get_leaderboard()
-        if leaderboard is not None: st.table(leaderboard)
-        if st.button("새로고침"): st.rerun()
+    if st.session_state.quiz_finished:
+        st.header("📊 명예의 전당")
+        if os.path.exists(RESULTS_FILE):
+            df = pd.read_csv(RESULTS_FILE)
+            st.dataframe(df.sort_values(by=['점수', '소요시간(초)'], ascending=[False, True]), use_container_width=True)
+        if st.button("다시 도전?"):
+            st.session_state.quiz_finished = False; st.session_state.start_time = None; st.rerun()
