@@ -35,7 +35,6 @@ global_state = get_global_state()
 
 def get_quiz_list():
     files = [f for f in os.listdir(QUIZ_DIR) if f.endswith(".txt")]
-    # 최신 파일이 먼저 오도록 정렬 (옵션)
     files.sort(key=lambda x: os.path.getmtime(os.path.join(QUIZ_DIR, x)), reverse=True)
     return [f.replace(".txt", "") for f in files]
 
@@ -100,7 +99,17 @@ with st.sidebar:
         
         weak_points = get_weak_points()
         st.caption(f"📊 취약: {weak_points}")
-        full_prompt = f"문서 바탕으로 5문제 출제. 친구들이 자주 틀린 주제({weak_points}) 참고.\n[Q]문제 [O]①.. [A]정답 [K]키워드"
+        
+        # 프롬프트 전체 문장 복구
+        full_prompt = f"""이 문서의 내용을 바탕으로 친구들과 풀 퀴즈 5문제를 만들어줘. 
+특히 친구들이 자주 틀린 주제({weak_points})가 있다면 더 심도 있게 다뤄줘.
+반드시 아래 형식을 엄격하게 지켜서 다른 설명 없이 텍스트만 출력해줘.
+
+[Q] 문제 내용
+[O] ①보기1 ②보기2 ③보기3 ④보기4 ⑤보기5
+[A] 정답 기호(예: ②)
+[K] 해당 문제의 핵심 키워드(오답 분석용)"""
+        
         st.code(full_prompt, language="text")
         
         global_state['instant_feedback'] = st.toggle("정답 즉시 확인", value=global_state['instant_feedback'])
@@ -114,7 +123,6 @@ with st.sidebar:
                     with open(os.path.join(QUIZ_DIR, f"{new_title}.txt"), "w", encoding="utf-8") as f:
                         f.write(admin_text)
                     st.success(f"'{new_title}' 배포 완료!")
-                    # 새 퀴즈를 바로 선택 상태로 만들기
                     st.session_state.current_quiz_title = new_title
                     st.rerun()
         
@@ -136,14 +144,11 @@ if not quiz_list:
 else:
     st.subheader("🎯 도전할 퀴즈를 선택해라")
     
-    # 기본 선택값 설정 (아무것도 선택 안 되어있으면 맨 첫 번째 퀴즈로)
     if not st.session_state.current_quiz_title or st.session_state.current_quiz_title not in quiz_list:
         st.session_state.current_quiz_title = quiz_list[0]
 
-    # 모든 퀴즈를 2열(가로 2칸) 버튼으로 나열
     cols = st.columns(2)
     for i, q_title in enumerate(quiz_list):
-        # 현재 선택된 퀴즈는 불꽃 마크로 강조
         is_active = (q_title == st.session_state.current_quiz_title)
         btn_label = f"🔥 {q_title}" if is_active else q_title
         
@@ -158,7 +163,6 @@ else:
 
     selected_quiz = st.session_state.current_quiz_title
 
-    # 순위표 상시 확인
     current_results_path = os.path.join(RESULTS_DIR, f"results_{selected_quiz}.csv")
     with st.expander(f"📊 '{selected_quiz}' 실시간 순위표", expanded=False):
         if st.button("🔄 순위 갱신"): st.rerun()
@@ -168,7 +172,6 @@ else:
         else:
             st.caption("아직 완료된 기록이 없습니다.")
 
-    # 퀴즈 풀기 로직
     current_quiz_data = robust_parse(load_quiz_content(selected_quiz))
     
     if not st.session_state.user_id:
