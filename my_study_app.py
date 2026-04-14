@@ -68,11 +68,10 @@ def robust_parse(text):
     return parsed
 
 # --- UI 레이아웃 ---
-st.title("🏆 부서 실시간 퀴즈 스튜디오")
+st.title("🏆 퀴즈 스튜디오")
 
 # 네트워크 정보 및 QR 코드 생성
-net_ip = get_network_ip()
-app_url = f"http://{net_ip}:8501"
+app_url = "https://hoya-quiz-studio.streamlit.app"
 
 # --- 사이드바: 관리자 설정 및 QR 코드 ---
 with st.sidebar:
