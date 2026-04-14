@@ -21,7 +21,7 @@ APP_URL = "https://hoya-quiz-studio.streamlit.app"
 # 관리자 비밀번호 설정 (원하는 번호로 변경 가능)
 ADMIN_PASSWORD = "2662"
 
-st.set_page_config(page_title="부서 퀴즈 스튜디오", layout="centered")
+st.set_page_config(page_title="퀴즈 스튜디오", layout="centered")
 
 # --- 전역 상태 공유 시스템 ---
 @st.cache_resource
@@ -64,7 +64,7 @@ def robust_parse(text):
     return parsed
 
 # --- UI 레이아웃 ---
-st.title("🏆 부서 퀴즈 스튜디오")
+st.title("🏆 퀴즈 스튜디오")
 
 # --- 사이드바: 관리자 설정 및 QR 코드 ---
 with st.sidebar:
