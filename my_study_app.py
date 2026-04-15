@@ -88,7 +88,7 @@ def robust_parse(text):
                        "a": ans_map.get(ans_char, 0), "k": ks[i] if i < len(ks) else "미분류"})
     return parsed
 
-# --- 4. 세션 상태 ---
+# --- 4. 세션 및 접속자(생존자) 상태 관리 ---
 if 'user_id' not in st.session_state: st.session_state.user_id = ""
 if 'start_time' not in st.session_state: st.session_state.start_time = None
 if 'quiz_finished' not in st.session_state: st.session_state.quiz_finished = False
@@ -99,12 +99,19 @@ if 'selected_quiz_title' not in st.session_state: st.session_state.selected_quiz
 def get_admin_settings():
     return {"instant_feedback": True, "allow_change": False}
 
-admin_settings = get_admin_settings()
+# 실시간 접속자(풀이 중인 사람)를 추적하기 위한 전역 세트(Set)
+@st.cache_resource
+def get_active_users():
+    return set()
 
-# --- 5. UI (사이드바 최적화) ---
+admin_settings = get_admin_settings()
+active_users = get_active_users()
+
+# --- 5. UI (사이드바) ---
 with st.sidebar:
-    # 1. 관리자 설정을 최상단으로 이동
-    st.subheader("👑 관리자 설정")
+    # 관리자 설정 헤더 옆에 현재 풀이 중인 접속자 수 표시 (HTML/CSS 활용)
+    st.markdown(f"### 👑 관리자 설정 <span style='font-size:14px; color:#4CAF50; font-weight:normal;'>🟢 생존자: {len(active_users)}명</span>", unsafe_allow_html=True)
+    
     pw_input = st.text_input("비밀번호", type="password", placeholder="Password", label_visibility="collapsed")
     
     if pw_input == ADMIN_PASSWORD:
@@ -112,7 +119,6 @@ with st.sidebar:
         weak_points = get_weak_points_from_gsheet()
         st.caption(f"📊 취약: {weak_points}")
         
-        # NotebookLM용 전체 프롬프트 유지
         full_prompt = f"""이 문서의 내용을 바탕으로 친구들과 풀 퀴즈 5문제를 만들어줘. 
 특히 친구들이 자주 틀린 주제({weak_points})가 있다면 더 심도 있게 다뤄줘.
 반드시 아래 형식을 엄격하게 지켜서 다른 설명 없이 텍스트만 출력해줘.
@@ -147,12 +153,11 @@ with st.sidebar:
                             st.session_state.selected_quiz_title = ""
                         st.rerun()
     
-    # 2. QR 코드를 하단에 작게 배치
     st.divider()
-    qr = qrcode.QRCode(version=1, box_size=3, border=2) # box_size를 줄여서 크기 축소
+    qr = qrcode.QRCode(version=1, box_size=3, border=2)
     qr.add_data(APP_URL); qr.make(fit=True)
     buf = BytesIO(); qr.make_image(fill_color="black", back_color="white").save(buf)
-    st.image(buf.getvalue(), width=120) # width를 지정하여 시각적으로 작게 표시
+    st.image(buf.getvalue(), width=120)
 
 # --- 6. 메인 영역 ---
 quiz_data_list = get_all_quizzes()
@@ -181,6 +186,9 @@ else:
                     st.session_state.selected_quiz_title = q_title
                     st.session_state.quiz_finished = False
                     st.session_state.start_time = None
+                    # 다른 퀴즈를 누르면 접속자 목록에서 제외
+                    if st.session_state.user_id in active_users:
+                        active_users.discard(st.session_state.user_id)
                     st.session_state.user_id = ""
                     st.session_state.user_answers = {}
                     st.rerun()
@@ -210,7 +218,9 @@ else:
                 if st.button("참여 및 바로 시작 🚀", use_container_width=True):
                     if u_id:
                         st.session_state.user_id = u_id
-                        st.session_state.start_time = time.time(); st.rerun()
+                        st.session_state.start_time = time.time()
+                        active_users.add(u_id) # 풀이 시작 시 접속자 명단에 추가!
+                        st.rerun()
             
             elif st.session_state.start_time and not st.session_state.quiz_finished:
                 st.subheader(f"🔥 {st.session_state.user_id}의 도전")
@@ -234,11 +244,17 @@ else:
                         wrong_ks = [q['k'] for k_i, q in enumerate(quiz_content) if st.session_state.user_answers.get(f"ans_{k_i}") != q['o'][q['a']]]
                         score = ((len(quiz_content)-len(wrong_ks))/len(quiz_content))*100
                         save_result_to_gsheet(quiz_title, st.session_state.user_id, score, duration, wrong_ks)
-                        st.session_state.quiz_finished = True; st.rerun()
+                        
+                        st.session_state.quiz_finished = True
+                        active_users.discard(st.session_state.user_id) # 제출 완료 시 접속자 명단에서 제거!
+                        st.rerun()
 
             if st.session_state.quiz_finished:
                 st.balloons()
                 st.success("제출 완료!")
                 if st.button("다른 퀴즈 하러 가기"):
-                    st.session_state.quiz_finished = False; st.session_state.start_time = None
-                    st.session_state.user_id = ""; st.session_state.user_answers = {}; st.rerun()
+                    st.session_state.quiz_finished = False
+                    st.session_state.start_time = None
+                    st.session_state.user_id = ""
+                    st.session_state.user_answers = {}
+                    st.rerun()
