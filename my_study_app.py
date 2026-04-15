@@ -8,7 +8,8 @@ import qrcode
 from io import BytesIO
 from collections import Counter
 
-# --- 1. 구글 시트 연동 설정 ---
+# --- 1. 구글 시트 연동 설정 (캐시 적용) ---
+@st.cache_resource
 def get_gspread_client():
     credentials = json.loads(st.secrets["GCP_JSON"], strict=False)
     gc = gspread.service_account_from_dict(credentials)
@@ -27,19 +28,32 @@ def get_worksheet(sheet_name, columns):
         st.error(f"구글 시트 연결 오류: {e}")
         return None
 
-# --- 2. 기본 설정 ---
-APP_URL = "https://hoya-quiz-studio.streamlit.app"
-ADMIN_PASSWORD = "1234"
-
-st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
-
-# --- 3. 데이터 처리 및 삭제 로직 ---
+# --- 3. 데이터 처리 및 삭제 로직 (데이터 캐시 적용) ---
+# ttl=15 옵션: 15초 동안은 구글에 요청하지 않고 메모리에 저장된 값을 씁니다.
+@st.cache_data(ttl=15, show_spinner=False)
 def get_all_quizzes():
     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
     if ws:
         data = ws.get_all_records()
         return sorted(data, key=lambda x: str(x.get('CreatedAt', '')), reverse=True)
     return []
+
+@st.cache_data(ttl=15, show_spinner=False)
+def get_all_results():
+    res_ws = get_worksheet("Results", ["QuizTitle", "User", "Score", "Duration", "Time"])
+    if res_ws:
+        return res_ws.get_all_records()
+    return []
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_weak_points_from_gsheet():
+    ws = get_worksheet("WrongAnswers", ["User", "Keyword", "Time"])
+    if ws:
+        data = ws.get_all_records()
+        if data:
+            counts = Counter([d.get('Keyword', '') for d in data if d.get('Keyword', '')])
+            return ", ".join([f"{k}({c}회)" for k, c in counts.most_common(3)])
+    return "데이터 없음"
 
 def delete_quiz_from_gsheet(quiz_title):
     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
@@ -48,6 +62,7 @@ def delete_quiz_from_gsheet(quiz_title):
             cell = ws.find(quiz_title)
             if cell:
                 ws.delete_rows(cell.row)
+                get_all_quizzes.clear() # 삭제 후 최신화를 위해 캐시 초기화
                 return True
         except Exception:
             pass
@@ -62,15 +77,10 @@ def save_result_to_gsheet(quiz_title, user_id, score, duration, wrong_keywords):
         if wrong_ws:
             for k in wrong_keywords:
                 wrong_ws.append_row([user_id, k, time.strftime('%Y-%m-%d %H:%M:%S')])
-
-def get_weak_points_from_gsheet():
-    ws = get_worksheet("WrongAnswers", ["User", "Keyword", "Time"])
-    if ws:
-        data = ws.get_all_records()
-        if data:
-            counts = Counter([d.get('Keyword', '') for d in data if d.get('Keyword', '')])
-            return ", ".join([f"{k}({c}회)" for k, c in counts.most_common(3)])
-    return "데이터 없음"
+    
+    # 📌 점수가 등록되면 즉시 순위표와 취약점 데이터를 새로고침 하도록 캐시를 날립니다.
+    get_all_results.clear()
+    get_weak_points_from_gsheet.clear()
 
 def robust_parse(text):
     qs = re.findall(r"\[Q\d?\]\s*(.*)", text)
@@ -87,6 +97,12 @@ def robust_parse(text):
         parsed.append({"q": qs[i].replace('**', '').strip(), "o": [o.strip() for o in opts],
                        "a": ans_map.get(ans_char, 0), "k": ks[i] if i < len(ks) else "미분류"})
     return parsed
+
+# --- 2. 기본 설정 ---
+APP_URL = "https://hoya-quiz-studio.streamlit.app"
+ADMIN_PASSWORD = "1234"
+
+st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
 
 # --- 4. 세션 및 접속자 상태 관리 ---
 if 'player_name' not in st.session_state: st.session_state.player_name = ""
@@ -138,7 +154,6 @@ with st.sidebar:
 [K] 해당 문제의 핵심 키워드(오답 분석용)"""
         st.code(full_prompt, language="text")
         
-        # 📌 자동화된 퀴즈 룰 설정 영역
         st.markdown("**⚙️ 퀴즈 룰 설정**")
         mode_options = ["⚡ 실시간 팩폭 (즉시 확인)", "🏁 최후의 심판 (마지막에 한 번에)"]
         current_mode = admin_settings.get('feedback_mode', mode_options[0])
@@ -146,7 +161,6 @@ with st.sidebar:
         selected_mode = st.selectbox("채점 방식", mode_options, index=mode_options.index(current_mode) if current_mode in mode_options else 0, label_visibility="collapsed")
         admin_settings['feedback_mode'] = selected_mode
         
-        # 선택된 모드에 따라 '답안 수정 허용' 강제 적용
         if selected_mode == "⚡ 실시간 팩폭 (즉시 확인)":
             admin_settings['allow_change'] = False
             st.caption("🔒 **답안 수정 불가** (한 번 누르면 끝)")
@@ -162,6 +176,7 @@ with st.sidebar:
                 if new_category and new_title and admin_text:
                     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
                     ws.append_row([new_category, new_title, admin_text, time.strftime('%Y-%m-%d %H:%M:%S')])
+                    get_all_quizzes.clear() # 배포 후 최신화
                     st.success("완료!"); st.rerun()
 
         with st.expander("🗑️ 퀴즈 삭제", expanded=False):
@@ -228,15 +243,16 @@ else:
             quiz_content = robust_parse(selected_quiz_data['Content'])
 
             with st.expander(f"📊 [{quiz_category}] '{quiz_title}' 실시간 순위", expanded=False):
-                if st.button("🔄 갱신", key="refresh_rank"): st.rerun()
-                res_ws = get_worksheet("Results", ["QuizTitle", "User", "Score", "Duration", "Time"])
-                if res_ws:
-                    all_res = res_ws.get_all_records()
-                    quiz_res = [r for r in all_res if r.get('QuizTitle') == quiz_title]
-                    if quiz_res:
-                        st.dataframe(pd.DataFrame(quiz_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]), use_container_width=True)
-                    else:
-                        st.caption("기록 없음")
+                if st.button("🔄 갱신", key="refresh_rank"):
+                    get_all_results.clear() # 수동 갱신 시 캐시 강제 초기화
+                    st.rerun()
+                
+                all_res = get_all_results()
+                quiz_res = [r for r in all_res if r.get('QuizTitle') == quiz_title]
+                if quiz_res:
+                    st.dataframe(pd.DataFrame(quiz_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]), use_container_width=True)
+                else:
+                    st.caption("기록 없음")
 
             if not st.session_state.player_name:
                 st.warning("👆 위에서 참가자 이름을 먼저 입력해야 퀴즈를 시작할 수 있습니다!")
@@ -253,7 +269,6 @@ else:
                 for idx, item in enumerate(quiz_content):
                     st.markdown(f"**Q{idx+1}. {item['q']}**")
                     
-                    # 📌 강제 적용된 allow_change 값에 따라 버튼 잠금 처리
                     is_answered = f"ans_{idx}" in st.session_state.user_answers
                     disabled = is_answered and not admin_settings['allow_change']
                     
