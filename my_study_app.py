@@ -8,29 +8,35 @@ import qrcode
 from io import BytesIO
 from collections import Counter
 
-# --- 0. 페이지 설정 및 디자인 ---
+# --- 0. 페이지 설정 및 디자인 (다크모드 지원 CSS 패치) ---
 st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
 
 st.markdown("""
 <style>
-/* 지문/수식 렌더링용 마크다운 개조 */
+/* 지문/수식 렌더링용 마크다운 개조 (다크/라이트 모드 자동 대응) */
 [data-testid="stMain"] blockquote {
-    background-color: #fdfdfd !important; border: 1px solid #e1e4e8 !important;
-    border-left: 5px solid #4A90E2 !important; padding: 20px !important;
-    border-radius: 8px !important; font-size: 15px !important; line-height: 1.8 !important;
-    color: #2c3e50 !important; margin-bottom: 15px !important; font-style: normal !important;
+    background-color: var(--secondary-background-color) !important; 
+    border: 1px solid var(--border-color) !important;
+    border-left: 5px solid var(--primary-color) !important; 
+    padding: 20px !important;
+    border-radius: 8px !important; 
+    font-size: 15px !important; 
+    line-height: 1.8 !important;
+    color: var(--text-color) !important; 
+    margin-bottom: 15px !important; 
+    font-style: normal !important;
 }
 [data-testid="stMain"] blockquote p { margin-bottom: 0 !important; }
 .question-header { font-size: 18px; font-weight: 800; color: #ff4b4b; margin-top: 30px; margin-bottom: 10px; }
-/* 채팅창 스타일 */
-.chat-msg { padding: 10px; border-radius: 10px; margin-bottom: 10px; background-color: #f1f3f5; }
-.chat-user { font-weight: bold; color: #1f77b4; font-size: 14px; }
-.chat-time { font-size: 11px; color: #888; float: right; }
+/* 채팅창 스타일 (다크/라이트 모드 자동 대응) */
+.chat-msg { padding: 10px; border-radius: 10px; margin-bottom: 10px; background-color: var(--secondary-background-color); color: var(--text-color); }
+.chat-user { font-weight: bold; color: var(--primary-color); font-size: 14px; }
+.chat-time { font-size: 11px; color: var(--text-color); opacity: 0.6; float: right; }
 @media (max-width: 768px) { [data-testid="stTabs"] [data-testid="column"] { flex: 1 1 calc(50% - 10px) !important; min-width: calc(45%) !important; } }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 1. 구글 시트 연동 (Settings & Chat 자동 생성 포함) ---
+# --- 1. 구글 시트 연동 ---
 @st.cache_resource
 def get_gspread_client():
     try:
@@ -78,7 +84,6 @@ def save_setting(key, value):
 @st.cache_data(ttl=5, show_spinner=False)
 def get_chats():
     ws = get_worksheet("Chat", ["Time", "User", "Message"])
-    # 최근 50개만 가져오기
     return ws.get_all_records()[-50:] if ws else []
 
 def save_chat(user, message):
@@ -115,12 +120,24 @@ def robust_parse(text):
         except: continue
     return parsed
 
-# --- 3. 퀴즈 관리 ---
+# --- 3. 퀴즈 관리 (수정 기능 추가) ---
+def update_quiz_in_gsheet(old_title, new_cat, new_tit):
+    ws = get_worksheet("Quizzes")
+    if ws:
+        try:
+            cell = ws.find(old_title, in_column=2) # Title은 2번째 열
+            if cell:
+                ws.update_cell(cell.row, 1, new_cat)
+                ws.update_cell(cell.row, 2, new_tit)
+                get_all_quizzes.clear(); return True
+        except: pass
+    return False
+
 def delete_quiz(title):
     ws = get_worksheet("Quizzes")
     if ws:
         try:
-            cell = ws.find(title)
+            cell = ws.find(title, in_column=2)
             if cell: ws.delete_rows(cell.row); get_all_quizzes.clear(); return True
         except: pass
     return False
@@ -139,7 +156,6 @@ ADMIN_PASSWORD = "1234"
 app_settings = get_settings()
 
 if 'player_name' not in st.session_state or not st.session_state.player_name:
-    # 우정파괴자 번호 자동 생성 (역대 사용된 번호 중 가장 큰 값 + 1)
     max_num = 0
     for r in get_all_results():
         m = re.match(r"우정파괴자(\d+)", str(r.get('User', '')))
@@ -156,10 +172,7 @@ active_users = get_active_users()
 # --- 5. 사이드바 (관리자 설정) ---
 with st.sidebar:
     st.markdown(f"<div style='text-align:right;'><span style='font-size: 14px; color: #4CAF50;'>🟢 접속중: {len(active_users)}명</span></div>", unsafe_allow_html=True)
-    
-    # 설정된 관리자 메뉴 이름 적용
-    admin_title = app_settings.get("admin_btn_name", "⚙️ 관리자 설정")
-    st.subheader(admin_title)
+    st.subheader("⚙️ 관리자 설정")
     
     pw_input = st.text_input("비밀번호", type="password", placeholder="Password", label_visibility="collapsed")
     if pw_input == ADMIN_PASSWORD:
@@ -182,62 +195,77 @@ with st.sidebar:
         st.caption(f"📊 취약 주제: {wp_data}")
         st.divider()
 
-        # [신규] 관리자 메뉴 이름 변경
-        new_admin_title = st.text_input("관리자 메뉴 이름 변경", value=admin_title)
-        if new_admin_title != admin_title: save_setting("admin_btn_name", new_admin_title); st.rerun()
-
-        # [신규] 기본 카테고리 드롭다운 적용 (기존 카테고리들 불러오기)
+        # 커스텀 카테고리(그룹) 리스트 생성 로직
         all_q = get_all_quizzes()
-        cat_list = list(dict.fromkeys([q.get('Category', '미분류') or '미분류' for q in all_q]))
-        if not cat_list: cat_list = ["미분류"]
-        current_def_cat = app_settings.get('default_category', cat_list[0])
-        if current_def_cat not in cat_list: cat_list.insert(0, current_def_cat)
+        custom_cats_str = app_settings.get("custom_categories", "")
+        custom_cats = [c.strip() for c in custom_cats_str.split(",") if c.strip()]
+        quiz_cats = [q.get('Category', '미분류') or '미분류' for q in all_q]
         
-        sel_cat = st.selectbox("📌 처음 열릴 카테고리", cat_list, index=cat_list.index(current_def_cat))
-        if sel_cat != current_def_cat: save_setting("default_category", sel_cat)
+        all_categories = list(dict.fromkeys(custom_cats + quiz_cats))
+        if not all_categories: all_categories = ["미분류"]
 
-        # [신규] 초기 화면(탭) 설정
+        # 처음 열릴 카테고리 및 화면 설정
+        current_def_cat = app_settings.get('default_category', all_categories[0])
+        if current_def_cat not in all_categories: all_categories.insert(0, current_def_cat)
+        sel_cat = st.selectbox("📌 처음 열릴 카테고리", all_categories, index=all_categories.index(current_def_cat))
+        if sel_cat != current_def_cat: save_setting("default_category", sel_cat); st.rerun()
+
         view_opts = ["🎯 퀴즈 선택", "💬 우정파괴창"]
         current_view = app_settings.get('default_view', view_opts[0])
         sel_view = st.selectbox("앱 시작 시 기본 화면", view_opts, index=view_opts.index(current_view))
-        if sel_view != current_view: save_setting("default_view", sel_view)
+        if sel_view != current_view: save_setting("default_view", sel_view); st.rerun()
 
-        # 채점 모드
         mode_opts = ["⚡ 실시간 팩폭 (즉시 확인)", "🏁 최후의 심판 (마지막에 한 번에)"]
         current_mode = app_settings.get('feedback_mode', mode_opts[0])
         sel_mode = st.selectbox("채점 방식", mode_opts, index=mode_opts.index(current_mode))
-        if sel_mode != current_mode: save_setting("feedback_mode", sel_mode)
+        if sel_mode != current_mode: save_setting("feedback_mode", sel_mode); st.rerun()
 
-        with st.expander("🆕 새 퀴즈 만들기", expanded=False):
-            nc = st.text_input("카테고리"); nt = st.text_input("퀴즈 제목"); nx = st.text_area("결과물 붙여넣기", height=150)
+        # [신규] 그룹(카테고리) 추가 전용
+        with st.expander("➕ 새 그룹(카테고리) 생성", expanded=False):
+            new_group = st.text_input("새 그룹 이름")
+            if st.button("그룹 추가", use_container_width=True):
+                if new_group and new_group not in custom_cats:
+                    custom_cats.append(new_group)
+                    save_setting("custom_categories", ",".join(custom_cats))
+                    st.rerun()
+
+        with st.expander("🆕 새 퀴즈 배포", expanded=False):
+            nc = st.text_input("카테고리 (자동 분류됨)"); nt = st.text_input("퀴즈 제목"); nx = st.text_area("결과물 붙여넣기", height=150)
             if st.button("🚀 신규 배포", use_container_width=True):
                 if nc and nt and nx:
                     ws_q = get_worksheet("Quizzes")
-                    if ws_q: ws_q.append_row([nc, nt, nx, time.strftime('%Y-%m-%d %H:%M:%S')]); get_all_quizzes.clear(); st.success("배포됨!"); st.rerun()
+                    if ws_q: ws_q.append_row([nc, nt, nx, time.strftime('%Y-%m-%d %H:%M:%S')]); get_all_quizzes.clear(); st.rerun()
 
-        with st.expander("🗑️ 퀴즈 삭제", expanded=False):
-            for idx, q_item in enumerate(all_q):
-                c1, c2 = st.columns([3, 1]); c1.caption(q_item.get('Title'))
-                if c2.button("X", key=f"del_{idx}"):
-                    if delete_quiz(q_item.get('Title')): st.rerun()
+        # [수정/개선] 퀴즈 이름 및 그룹 변경 로직 통합
+        with st.expander("✏️ 퀴즈 관리 (수정 및 삭제)", expanded=False):
+            if all_q:
+                q_titles = [q['Title'] for q in all_q]
+                sel_edit_q = st.selectbox("관리할 퀴즈 선택", q_titles)
+                if sel_edit_q:
+                    curr_q = next((q for q in all_q if q['Title'] == sel_edit_q), None)
+                    edit_cat = st.text_input("카테고리 (그룹) 변경", value=curr_q['Category'])
+                    edit_tit = st.text_input("퀴즈 제목 변경", value=curr_q['Title'])
+                    col1, col2 = st.columns(2)
+                    if col1.button("💾 정보 수정", use_container_width=True):
+                        if update_quiz_in_gsheet(sel_edit_q, edit_cat, edit_tit): st.rerun()
+                    if col2.button("🗑️ 삭제", use_container_width=True):
+                        if delete_quiz(sel_edit_q): st.rerun()
     st.divider()
     qr = qrcode.QRCode(version=1, box_size=3, border=2); qr.add_data(APP_URL); qr.make(fit=True)
     buf = BytesIO(); qr.make_image(fill_color="black", back_color="white").save(buf); st.image(buf.getvalue(), width=100)
 
 # --- 6. 메인 화면 ---
 st.title("🧪 우정 파괴소")
-st.session_state.player_name = st.text_input("👤 참가자 이름 (자동 생성됨)", value=st.session_state.player_name)
+# [수정] 입력창 설명 군더더기 제거
+st.session_state.player_name = st.text_input("👤 참가자 이름", value=st.session_state.player_name)
 st.divider()
 
 active_users.add(st.session_state.player_name)
 
-# [신규] 메인 네비게이션 (라디오 버튼 형태)
 view_mode = st.radio("화면 선택", ["🎯 퀴즈 선택", "💬 우정파괴창"], horizontal=True, label_visibility="collapsed", index=["🎯 퀴즈 선택", "💬 우정파괴창"].index(app_settings.get('default_view', "🎯 퀴즈 선택")))
 
 if view_mode == "💬 우정파괴창":
     st.subheader("💬 우정파괴창 (소통 & 자랑)")
-    
-    # 채팅 출력 영역
     chat_container = st.container(height=400)
     for chat in get_chats():
         chat_container.markdown(f"""
@@ -248,28 +276,33 @@ if view_mode == "💬 우정파괴창":
         </div>
         """, unsafe_allow_html=True)
         
-    # 메시지 입력
     with st.form("chat_form", clear_on_submit=True):
         col1, col2 = st.columns([4, 1])
         msg = col1.text_input("메시지 입력", label_visibility="collapsed", placeholder="점수 자랑이나 건의사항을 남겨보세요!")
         if col2.form_submit_button("전송", use_container_width=True) and msg.strip():
-            save_chat(st.session_state.player_name, msg.strip())
-            st.rerun()
+            save_chat(st.session_state.player_name, msg.strip()); st.rerun()
 
 elif view_mode == "🎯 퀴즈 선택":
     quiz_data_list = get_all_quizzes()
-    if quiz_data_list:
-        categories = list(dict.fromkeys([q.get('Category', '미분류') or '미분류' for q in quiz_data_list]))
-        pref_cat = app_settings.get('default_category', '').strip()
-        if pref_cat in categories: categories.remove(pref_cat); categories.insert(0, pref_cat)
-        
-        tabs = st.tabs(categories)
-        for i, category in enumerate(categories):
-            with tabs[i]:
-                # [신규] 카테고리 내 퀴즈 글자순 정렬
-                cat_quizzes = sorted([q for q in quiz_data_list if (q.get('Category') or '미분류') == category], key=lambda x: x['Title'])
-                
-                # [신규] 2열 배치 최적화 및 퀴즈 내용 하단 확장
+    
+    # 설정에 저장된 그룹(카테고리)과 퀴즈의 카테고리 병합 (빈 탭도 노출하기 위해)
+    custom_cats_str = app_settings.get("custom_categories", "")
+    custom_cats = [c.strip() for c in custom_cats_str.split(",") if c.strip()]
+    quiz_cats = [q.get('Category', '미분류') or '미분류' for q in quiz_data_list]
+    categories = list(dict.fromkeys(custom_cats + quiz_cats))
+    
+    pref_cat = app_settings.get('default_category', '').strip()
+    if pref_cat in categories: categories.remove(pref_cat); categories.insert(0, pref_cat)
+    
+    if not categories: categories = ["미분류"]
+    tabs = st.tabs(categories)
+    
+    for i, category in enumerate(categories):
+        with tabs[i]:
+            cat_quizzes = sorted([q for q in quiz_data_list if (q.get('Category') or '미분류') == category], key=lambda x: x['Title'])
+            if not cat_quizzes:
+                st.caption("이 그룹에는 아직 등록된 퀴즈가 없습니다.")
+            else:
                 cols = st.columns(2)
                 for j, q_item in enumerate(cat_quizzes):
                     q_title = q_item.get('Title')
@@ -282,7 +315,6 @@ elif view_mode == "🎯 퀴즈 선택":
                         st.session_state.user_answers = {}
                         st.rerun()
 
-        # [신규] 선택된 퀴즈의 랭킹과 시작 버튼이 버튼 목록 바로 아래 생성됨
         if st.session_state.selected_quiz:
             st.divider()
             st.subheader(f"📖 {st.session_state.selected_quiz}")
