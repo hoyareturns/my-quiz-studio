@@ -10,10 +10,11 @@ from collections import Counter
 
 # --- 1. 구글 시트 연동 설정 ---
 def get_gspread_client():
-    credentials = json.loads(st.secrets["GCP_JSON"])
+    # strict=False 를 추가하여 보이지 않는 줄바꿈 에러를 무시하도록 처리합니다.
+    credentials = json.loads(st.secrets["GCP_JSON"], strict=False) 
     gc = gspread.service_account_from_dict(credentials)
     return gc.open_by_key(st.secrets["SHEET_ID"])
-
+    
 def get_worksheet(sheet_name, columns):
     try:
         sh = get_gspread_client()
