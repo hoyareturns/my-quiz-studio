@@ -2,3 +2,4 @@ streamlit
 pandas 
 qrcode 
 Pillow 
+gspread
