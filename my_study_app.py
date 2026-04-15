@@ -28,8 +28,7 @@ def get_worksheet(sheet_name, columns):
         st.error(f"구글 시트 연결 오류: {e}")
         return None
 
-# --- 3. 데이터 처리 및 삭제 로직 (데이터 캐시 적용) ---
-# ttl=15 옵션: 15초 동안은 구글에 요청하지 않고 메모리에 저장된 값을 씁니다.
+# --- 3. 데이터 처리 및 삭제 로직 ---
 @st.cache_data(ttl=15, show_spinner=False)
 def get_all_quizzes():
     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
@@ -62,7 +61,7 @@ def delete_quiz_from_gsheet(quiz_title):
             cell = ws.find(quiz_title)
             if cell:
                 ws.delete_rows(cell.row)
-                get_all_quizzes.clear() # 삭제 후 최신화를 위해 캐시 초기화
+                get_all_quizzes.clear()
                 return True
         except Exception:
             pass
@@ -78,7 +77,6 @@ def save_result_to_gsheet(quiz_title, user_id, score, duration, wrong_keywords):
             for k in wrong_keywords:
                 wrong_ws.append_row([user_id, k, time.strftime('%Y-%m-%d %H:%M:%S')])
     
-    # 📌 점수가 등록되면 즉시 순위표와 취약점 데이터를 새로고침 하도록 캐시를 날립니다.
     get_all_results.clear()
     get_weak_points_from_gsheet.clear()
 
@@ -166,7 +164,7 @@ with st.sidebar:
             st.caption("🔒 **답안 수정 불가** (한 번 누르면 끝)")
         else:
             admin_settings['allow_change'] = True
-            st.caption("🔓 **답안 수정 자유** (제출 전까지 변경 가능)")
+            st.caption("🔓 **답안 수정 자유** (제출 전 딜레이 없음)")
         
         with st.expander("🆕 새 퀴즈 만들기", expanded=False):
             new_category = st.text_input("카테고리")
@@ -176,7 +174,7 @@ with st.sidebar:
                 if new_category and new_title and admin_text:
                     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
                     ws.append_row([new_category, new_title, admin_text, time.strftime('%Y-%m-%d %H:%M:%S')])
-                    get_all_quizzes.clear() # 배포 후 최신화
+                    get_all_quizzes.clear()
                     st.success("완료!"); st.rerun()
 
         with st.expander("🗑️ 퀴즈 삭제", expanded=False):
@@ -244,7 +242,7 @@ else:
 
             with st.expander(f"📊 [{quiz_category}] '{quiz_title}' 실시간 순위", expanded=False):
                 if st.button("🔄 갱신", key="refresh_rank"):
-                    get_all_results.clear() # 수동 갱신 시 캐시 강제 초기화
+                    get_all_results.clear()
                     st.rerun()
                 
                 all_res = get_all_results()
@@ -266,47 +264,90 @@ else:
             
             elif st.session_state.start_time and not st.session_state.quiz_finished:
                 st.subheader(f"🔥 {st.session_state.player_name}의 도전")
-                for idx, item in enumerate(quiz_content):
-                    st.markdown(f"**Q{idx+1}. {item['q']}**")
-                    
-                    is_answered = f"ans_{idx}" in st.session_state.user_answers
-                    disabled = is_answered and not admin_settings['allow_change']
-                    
-                    ans = st.radio(f"답안{idx}", item['o'], key=f"ans_{idx}", index=None, label_visibility="collapsed", disabled=disabled)
-                    
-                    if ans:
-                        st.session_state.user_answers[f"ans_{idx}"] = ans
-                        if admin_settings.get('feedback_mode') == "⚡ 실시간 팩폭 (즉시 확인)":
+                
+                # =======================================================
+                # 📌 모드에 따라 로직(UI 렌더링 방식)을 완전히 분리합니다.
+                # =======================================================
+                current_mode = admin_settings.get('feedback_mode')
+                
+                if current_mode == "⚡ 실시간 팩폭 (즉시 확인)":
+                    # [모드 1] 즉각 반응 (클릭 시 새로고침 발생)
+                    for idx, item in enumerate(quiz_content):
+                        st.markdown(f"**Q{idx+1}. {item['q']}**")
+                        
+                        is_answered = f"ans_{idx}" in st.session_state.user_answers
+                        disabled = is_answered
+                        
+                        ans = st.radio(f"답안{idx}", item['o'], key=f"ans_{idx}", index=None, label_visibility="collapsed", disabled=disabled)
+                        
+                        if ans:
+                            st.session_state.user_answers[f"ans_{idx}"] = ans
                             if ans == item['o'][item['a']]: st.success("⭕ 정답!")
                             else: st.error(f"❌ 오답! (정답: {item['o'][item['a']]})")
-                    st.divider()
-                
-                if st.button("🏁 제출하기", use_container_width=True):
-                    if len(st.session_state.user_answers) < len(quiz_content):
-                        st.warning("모든 문제를 풀어야 합니다!")
-                    else:
-                        duration = time.time() - st.session_state.start_time
-                        
-                        wrong_ks = []
-                        review_data = []
-                        for k_i, q in enumerate(quiz_content):
-                            u_ans = st.session_state.user_answers.get(f"ans_{k_i}")
-                            c_ans = q['o'][q['a']]
-                            is_correct = (u_ans == c_ans)
-                            if not is_correct: wrong_ks.append(q['k'])
-                            review_data.append({"q": q['q'], "u_ans": u_ans, "c_ans": c_ans, "is_correct": is_correct})
+                        st.divider()
+                    
+                    if st.button("🏁 제출하기", use_container_width=True):
+                        if len(st.session_state.user_answers) < len(quiz_content):
+                            st.warning("모든 문제를 풀어야 합니다!")
+                        else:
+                            duration = time.time() - st.session_state.start_time
+                            wrong_ks, review_data = [], []
+                            for k_i, q in enumerate(quiz_content):
+                                u_ans = st.session_state.user_answers.get(f"ans_{k_i}")
+                                c_ans = q['o'][q['a']]
+                                is_correct = (u_ans == c_ans)
+                                if not is_correct: wrong_ks.append(q['k'])
+                                review_data.append({"q": q['q'], "u_ans": u_ans, "c_ans": c_ans, "is_correct": is_correct})
+                                
+                            score = ((len(quiz_content)-len(wrong_ks))/len(quiz_content))*100
+                            save_result_to_gsheet(quiz_title, st.session_state.player_name, score, duration, wrong_ks)
                             
-                        score = ((len(quiz_content)-len(wrong_ks))/len(quiz_content))*100
-                        save_result_to_gsheet(quiz_title, st.session_state.player_name, score, duration, wrong_ks)
-                        
-                        st.session_state.quiz_finished = True
-                        st.session_state.last_score = score
-                        st.session_state.review_data = review_data
-                        
-                        if st.session_state.player_name in active_users:
-                            active_users.discard(st.session_state.player_name)
-                        st.rerun()
+                            st.session_state.quiz_finished = True
+                            st.session_state.last_score = score
+                            st.session_state.review_data = review_data
+                            
+                            if st.session_state.player_name in active_users:
+                                active_users.discard(st.session_state.player_name)
+                            st.rerun()
 
+                else:
+                    # [모드 2] 최후의 심판 (Form 적용 - 클릭 시 새로고침 방지)
+                    with st.form(key="quiz_form"):
+                        for idx, item in enumerate(quiz_content):
+                            st.markdown(f"**Q{idx+1}. {item['q']}**")
+                            # form 내부이므로 아무리 눌러도 화면이 깜빡이지 않습니다.
+                            st.radio(f"답안{idx}", item['o'], key=f"ans_form_{idx}", index=None, label_visibility="collapsed")
+                            st.divider()
+                        
+                        # 폼의 제출 버튼
+                        submitted = st.form_submit_button("🏁 모든 답안 제출하기", use_container_width=True)
+                        
+                        if submitted:
+                            # 폼 안의 값들은 제출 시점에만 session_state에 등록됩니다.
+                            if any(st.session_state.get(f"ans_form_{i}") is None for i in range(len(quiz_content))):
+                                st.warning("모든 문제를 풀어야 제출할 수 있습니다!")
+                            else:
+                                duration = time.time() - st.session_state.start_time
+                                wrong_ks, review_data = [], []
+                                for k_i, q in enumerate(quiz_content):
+                                    u_ans = st.session_state.get(f"ans_form_{k_i}")
+                                    c_ans = q['o'][q['a']]
+                                    is_correct = (u_ans == c_ans)
+                                    if not is_correct: wrong_ks.append(q['k'])
+                                    review_data.append({"q": q['q'], "u_ans": u_ans, "c_ans": c_ans, "is_correct": is_correct})
+                                    
+                                score = ((len(quiz_content)-len(wrong_ks))/len(quiz_content))*100
+                                save_result_to_gsheet(quiz_title, st.session_state.player_name, score, duration, wrong_ks)
+                                
+                                st.session_state.quiz_finished = True
+                                st.session_state.last_score = score
+                                st.session_state.review_data = review_data
+                                
+                                if st.session_state.player_name in active_users:
+                                    active_users.discard(st.session_state.player_name)
+                                st.rerun()
+
+            # 📌 퀴즈 종료 화면
             if st.session_state.quiz_finished:
                 st.balloons()
                 st.success(f"🎉 제출 완료! 당신의 점수는 **{int(st.session_state.last_score)}점** 입니다.")
