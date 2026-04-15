@@ -111,7 +111,7 @@ if 'selected_quiz_title' not in st.session_state: st.session_state.selected_quiz
 
 @st.cache_resource
 def get_admin_settings():
-    return {"feedback_mode": "⚡ 실시간 팩폭 (즉시 확인)", "allow_change": False}
+    return {"feedback_mode": "⚡ 실시간 팩폭 (즉시 확인)", "allow_change": False, "default_category": ""}
 
 @st.cache_resource
 def get_active_users():
@@ -120,6 +120,8 @@ def get_active_users():
 admin_settings = get_admin_settings()
 if "feedback_mode" not in admin_settings:
     admin_settings["feedback_mode"] = "⚡ 실시간 팩폭 (즉시 확인)"
+if "default_category" not in admin_settings:
+    admin_settings["default_category"] = ""
 
 active_users = get_active_users()
 
@@ -153,6 +155,10 @@ with st.sidebar:
         st.code(full_prompt, language="text")
         
         st.markdown("**⚙️ 퀴즈 룰 설정**")
+        
+        # 📌 1. 기본 카테고리 지정 메뉴 추가
+        admin_settings['default_category'] = st.text_input("📌 처음 열릴 카테고리", value=admin_settings.get('default_category', ''), placeholder="예: 배관기초 (비우면 최신순)")
+        
         mode_options = ["⚡ 실시간 팩폭 (즉시 확인)", "🏁 최후의 심판 (마지막에 한 번에)"]
         current_mode = admin_settings.get('feedback_mode', mode_options[0])
         
@@ -212,6 +218,12 @@ else:
         cat = q.get('Category', '미분류') or '미분류'
         if cat not in categories: categories.append(cat)
             
+    # 📌 2. 기본 카테고리를 맨 앞으로 강제 이동 (에러 방지 안전망 포함)
+    pref_cat = admin_settings.get('default_category', '').strip()
+    if pref_cat and pref_cat in categories:
+        categories.remove(pref_cat)
+        categories.insert(0, pref_cat) # 맨 앞으로 삽입
+        
     tabs = st.tabs(categories)
     
     for i, cat in enumerate(categories):
@@ -265,13 +277,9 @@ else:
             elif st.session_state.start_time and not st.session_state.quiz_finished:
                 st.subheader(f"🔥 {st.session_state.player_name}의 도전")
                 
-                # =======================================================
-                # 📌 모드에 따라 로직(UI 렌더링 방식)을 완전히 분리합니다.
-                # =======================================================
                 current_mode = admin_settings.get('feedback_mode')
                 
                 if current_mode == "⚡ 실시간 팩폭 (즉시 확인)":
-                    # [모드 1] 즉각 반응 (클릭 시 새로고침 발생)
                     for idx, item in enumerate(quiz_content):
                         st.markdown(f"**Q{idx+1}. {item['q']}**")
                         
@@ -311,19 +319,15 @@ else:
                             st.rerun()
 
                 else:
-                    # [모드 2] 최후의 심판 (Form 적용 - 클릭 시 새로고침 방지)
                     with st.form(key="quiz_form"):
                         for idx, item in enumerate(quiz_content):
                             st.markdown(f"**Q{idx+1}. {item['q']}**")
-                            # form 내부이므로 아무리 눌러도 화면이 깜빡이지 않습니다.
                             st.radio(f"답안{idx}", item['o'], key=f"ans_form_{idx}", index=None, label_visibility="collapsed")
                             st.divider()
                         
-                        # 폼의 제출 버튼
                         submitted = st.form_submit_button("🏁 모든 답안 제출하기", use_container_width=True)
                         
                         if submitted:
-                            # 폼 안의 값들은 제출 시점에만 session_state에 등록됩니다.
                             if any(st.session_state.get(f"ans_form_{i}") is None for i in range(len(quiz_content))):
                                 st.warning("모든 문제를 풀어야 제출할 수 있습니다!")
                             else:
@@ -347,7 +351,6 @@ else:
                                     active_users.discard(st.session_state.player_name)
                                 st.rerun()
 
-            # 📌 퀴즈 종료 화면
             if st.session_state.quiz_finished:
                 st.balloons()
                 st.success(f"🎉 제출 완료! 당신의 점수는 **{int(st.session_state.last_score)}점** 입니다.")
