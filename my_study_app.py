@@ -8,12 +8,12 @@ import qrcode
 from io import BytesIO
 from collections import Counter
 
-# --- 0. 페이지 설정 및 디자인 (지문 박스 + 모바일 2열 + 헤더) ---
+# --- 0. 페이지 설정 및 디자인 (지문 박스 + 모바일 최적화) ---
 st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
 
 st.markdown("""
 <style>
-/* 📖 국어 지문 전용 상자 스타일 */
+/* 📖 국어 지문 전용 상자 */
 .passage-container {
     background-color: #fdfdfd;
     border: 1px solid #e1e4e8;
@@ -33,7 +33,7 @@ st.markdown("""
     color: #ff4b4b;
     margin-top: 30px;
 }
-/* 모바일 2열 버튼 레이아웃 강제 (LandScape 대응) */
+/* 모바일 2열 버튼 레이아웃 강제 */
 @media (max-width: 768px) {
     [data-testid="stTabs"] [data-testid="column"] {
         flex: 1 1 calc(50% - 10px) !important;
@@ -63,7 +63,7 @@ def get_worksheet(sheet_name, columns=None):
         return ws
     except Exception: return None
 
-# --- 2. 데이터 처리 및 정밀 파싱 로직 ---
+# --- 2. 데이터 처리 및 정밀 파싱 ---
 @st.cache_data(ttl=15, show_spinner=False)
 def get_all_quizzes():
     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
@@ -73,16 +73,6 @@ def get_all_quizzes():
 def get_all_results():
     ws = get_worksheet("Results", ["QuizTitle", "User", "Score", "Duration", "Time"])
     return ws.get_all_records() if ws else []
-
-@st.cache_data(ttl=30, show_spinner=False)
-def get_weak_points_from_gsheet():
-    ws = get_worksheet("WrongAnswers", ["User", "Keyword", "Time"])
-    if ws:
-        data = ws.get_all_records()
-        if data:
-            counts = Counter([d.get('Keyword', '') for d in data if d.get('Keyword', '')])
-            return ", ".join([f"{k}({c}회)" for k, c in counts.most_common(3)])
-    return "데이터 없음"
 
 def robust_parse(text):
     chunks = re.split(r"\[Q\d*\]", text)
@@ -106,7 +96,7 @@ def robust_parse(text):
         except: continue
     return parsed
 
-# --- 3. 관리 및 저장 기능 (기존 기능 유지) ---
+# --- 3. 관리 및 저장 기능 ---
 def delete_quiz_from_gsheet(quiz_title):
     ws = get_worksheet("Quizzes")
     if ws:
@@ -127,7 +117,7 @@ def save_result_to_gsheet(quiz_title, user_id, score, duration, wrong_keywords):
         if wrong_ws:
             for k in wrong_keywords:
                 wrong_ws.append_row([user_id, k, time.strftime('%Y-%m-%d %H:%M:%S')])
-    get_all_results.clear(); get_weak_points_from_gsheet.clear()
+    get_all_results.clear()
 
 # --- 4. 세션 및 기본 설정 ---
 APP_URL = "https://hoya-quiz-studio.streamlit.app"
@@ -148,24 +138,23 @@ admin_settings = get_admin_settings()
 def get_active_users(): return set()
 active_users = get_active_users()
 
-# --- 5. 사이드바 (관리자 메뉴 완벽 복구) ---
+# --- 5. UI (사이드바) ---
 with st.sidebar:
-    st.markdown(f"<div style='display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px;'><h3 style='margin: 0;'>관리자 설정</h3><span style='font-size: 14px; color: #4CAF50;'>🟢 풀이중: {len(active_users)}명</span></div>", unsafe_allow_html=True)
+    # 📌 [최우선] AI 출제 프롬프트 (비밀번호와 상관없이 최상단 노출)
+    st.info("🪄 **AI 출제 프롬프트 (지문 인식형)**")
     
-    pw_input = st.text_input("비밀번호", type="password", placeholder="Password", label_visibility="collapsed")
-    
-    if pw_input == ADMIN_PASSWORD:
-        st.success("인증됨")
-        
-        # 🛡️ 에러 방어: 취약 주제 데이터와 프롬프트 연동
-        safe_weak_points = "데이터 없음"
-        try:
-            safe_weak_points = get_weak_points_from_gsheet()
-        except: pass
-        
-        # 📌 최우선 배치: AI 출제 프롬프트
-        st.info("🪄 **AI 출제 프롬프트 (지문 인식형)**")
-        prompt_text = f"""국어 문제 10개를 출제해줘. 특히 자주 틀리는 주제({safe_weak_points})를 반영해줘.
+    # 취약점 데이터를 안전하게 가져오기 (에러 방지)
+    safe_weak_points = "데이터 없음"
+    try:
+        ws_wrong = get_worksheet("WrongAnswers")
+        if ws_wrong:
+            wrong_data = ws_wrong.get_all_records()
+            if wrong_data:
+                counts = Counter([d.get('Keyword', '') for d in wrong_data if d.get('Keyword', '')])
+                safe_weak_points = ", ".join([f"{k}({v}회)" for k, v in counts.most_common(2)])
+    except: pass
+
+    full_prompt = f"""국어 문제 10개를 출제해줘. 특히 자주 틀리는 주제({safe_weak_points})를 반영해줘.
 지문이 있는 경우 반드시 포함하되, 아래 형식을 엄격히 지켜줘.
 
 [Q]
@@ -177,29 +166,38 @@ with st.sidebar:
 [O] ①보기1 ②보기2 ③보기3 ④보기4 ⑤보기5
 [A] 정답 기호(예: ②)
 [K] 핵심 키워드"""
-        st.code(prompt_text, language="text")
-        
-        st.caption(f"📊 실시간 취약 주제: {safe_weak_points}")
-        st.divider()
+    
+    st.code(full_prompt, language="text")
+    st.divider()
 
-        # ⚙️ 퀴즈 룰 설정
-        admin_settings['default_category'] = st.text_input("📌 처음 열릴 카테고리", value=admin_settings.get('default_category', ''))
+    # 🔑 관리자 설정 (비밀번호 확인)
+    st.markdown(f"<div style='display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px;'><h3 style='margin: 0;'>관리자 설정</h3><span style='font-size: 14px; color: #4CAF50;'>🟢 풀이중: {len(active_users)}명</span></div>", unsafe_allow_html=True)
+    
+    pw_input = st.text_input("비밀번호", type="password", placeholder="Password", label_visibility="collapsed")
+    
+    if pw_input == ADMIN_PASSWORD:
+        st.success("인증됨")
+        st.caption(f"📊 취약: {safe_weak_points}")
+        
+        st.markdown("**⚙️ 퀴즈 룰 설정**")
+        admin_settings['default_category'] = st.text_input("📌 처음 열릴 카테고리", value=admin_settings.get('default_category', ''), placeholder="예: 국어")
+        
         mode_options = ["⚡ 실시간 팩폭 (즉시 확인)", "🏁 최후의 심판 (마지막에 한 번에)"]
         selected_mode = st.selectbox("채점", mode_options, index=mode_options.index(admin_settings['feedback_mode']))
         admin_settings['feedback_mode'] = selected_mode
         admin_settings['allow_change'] = (selected_mode != mode_options[0])
         st.caption(f"{'🔒 수정 불가' if not admin_settings['allow_change'] else '🔓 수정 자유'}")
 
-        # 🆕 퀴즈 만들기
         with st.expander("🆕 새 퀴즈 만들기", expanded=False):
-            c = st.text_input("카테고리"); t = st.text_input("퀴즈 제목"); tx = st.text_area("결과물 붙여넣기", height=120)
+            new_cat = st.text_input("카테고리")
+            new_tit = st.text_input("퀴즈 제목")
+            admin_tx = st.text_area("결과물 붙여넣기", height=120)
             if st.button("🚀 신규 배포", use_container_width=True):
-                if c and t and tx:
+                if new_cat and new_tit and admin_tx:
                     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
-                    ws.append_row([c, t, tx, time.strftime('%Y-%m-%d %H:%M:%S')])
+                    ws.append_row([new_cat, new_tit, admin_tx, time.strftime('%Y-%m-%d %H:%M:%S')])
                     get_all_quizzes.clear(); st.success("완료!"); st.rerun()
 
-        # 🗑️ 퀴즈 삭제
         with st.expander("🗑️ 퀴즈 삭제", expanded=False):
             all_q = get_all_quizzes()
             for idx, q in enumerate(all_q):
@@ -212,16 +210,15 @@ with st.sidebar:
     qr = qrcode.QRCode(version=1, box_size=3, border=2)
     qr.add_data(APP_URL); qr.make(fit=True)
     buf = BytesIO(); qr.make_image(fill_color="black", back_color="white").save(buf)
-    st.image(buf.getvalue(), width=100)
+    st.image(buf.getvalue(), width=120)
 
 # --- 6. 메인 영역 ---
 st.title("🧪 우정 파괴소")
-st.session_state.player_name = st.text_input("👤 참가자 이름", value=st.session_state.player_name, placeholder="이름을 입력하세요")
+st.text_input("👤 참가자 이름", key="player_name", placeholder="이름을 입력하세요")
 st.divider()
 
 quiz_list = get_all_quizzes()
 if quiz_list:
-    st.subheader("🎯 퀴즈 선택")
     cats = list(dict.fromkeys([q.get('Category', '미분류') or '미분류' for q in quiz_list]))
     pref = admin_settings.get('default_category', '').strip()
     if pref in cats: cats.remove(pref); cats.insert(0, pref)
@@ -244,7 +241,6 @@ if quiz_list:
         if q_data:
             quiz_content = robust_parse(q_data['Content'])
 
-            # 📊 순위표 복구
             with st.expander("📊 실시간 순위표", expanded=False):
                 if st.button("🔄 순위 갱신"): get_all_results.clear(); st.rerun()
                 res = [r for r in get_all_results() if r.get('QuizTitle') == q_data['Title']]
@@ -260,7 +256,6 @@ if quiz_list:
                 for idx, item in enumerate(quiz_content):
                     st.markdown(f'<p class="question-header">문제 {idx+1}.</p>', unsafe_allow_html=True)
                     
-                    # 📌 지문 인식 및 박스 처리
                     disp = item['q']
                     if "<지문>" in disp and "</지문>" in disp:
                         disp = disp.replace("<지문>", '<div class="passage-container">').replace("</지문>", '</div>')
@@ -284,9 +279,9 @@ if quiz_list:
                         wrong_ks = [q['k'] for k_i, q in enumerate(quiz_content) if st.session_state.user_answers.get(f"ans_{k_i}") != q['o'][q['a']]]
                         score = ((len(quiz_content)-len(wrong_ks))/len(quiz_content))*100
                         save_result_to_gsheet(q_data['Title'], st.session_state.player_name, score, duration, wrong_ks)
-                        st.session_state.quiz_finished = True; st.session_state.last_score = score
-                        active_users.discard(st.session_state.player_name); st.rerun()
+                        st.session_state.quiz_finished = True; st.rerun()
                     else: st.warning("모든 문제를 풀어주세요!")
 
         if st.session_state.quiz_finished:
-            st.balloons(); st.success(f"🎉 {int(st.session_state.last_score)}점 획득!"); st.button("다른 퀴즈 하기", on_click=lambda: st.rerun())
+            active_users.discard(st.session_state.player_name)
+            st.balloons(); st.success("🎉 수고하셨습니다!"); st.button("다른 퀴즈 하기", on_click=lambda: st.rerun())
