@@ -8,32 +8,46 @@ import qrcode
 from io import BytesIO
 from collections import Counter
 
-# --- 0. 페이지 설정 및 모바일 2열 패치 ---
+# --- 0. 페이지 설정 및 강력한 2열 고정 CSS ---
 st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
 
-# 📱 버튼 사라짐 방지 + 모바일 2열 유지 최적화 CSS
+# 📱 모바일/웹 공통 2열 그리드 강제 적용 CSS
 st.markdown("""
 <style>
-/* 탭 안의 버튼들을 감싸는 영역을 2열로 배치 */
-[data-testid="stTabs"] div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column;"] {
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    gap: 10px !important;
-}
-
-/* 탭 내의 각 버튼(컬럼) 너비 조정 */
-[data-testid="stTabs"] [data-testid="column"] {
-    flex: 1 1 calc(50% - 15px) !important;
-    min-width: calc(45%) !important;
-    max-width: calc(50%) !important;
-}
-
-/* 버튼 텍스트가 잘리지 않도록 높이 자동 조절 */
-.stButton > button {
+/* 그리드 컨테이너 설정 */
+.quiz-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
     width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    margin-bottom: 20px;
+}
+
+/* 커스텀 버튼 스타일 */
+.quiz-btn {
+    display: block;
+    width: 100%;
+    padding: 15px 5px;
+    background-color: #f0f2f6;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    text-align: center;
+    text-decoration: none;
+    color: #31333F;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.quiz-btn:active {
+    background-color: #e0e2e6;
+}
+
+.active-quiz {
+    background-color: #ff4b4b !important;
+    color: white !important;
+    border: none;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -188,7 +202,7 @@ if not quiz_data_list:
     st.info("등록된 퀴즈가 없습니다.")
 else:
     st.subheader("🎯 퀴즈 선택")
-    categories = list(set([q.get('Category', '미분류') or '미분류' for q in quiz_data_list]))
+    categories = list(dict.fromkeys([q.get('Category', '미분류') or '미분류' for q in quiz_data_list]))
     pref_cat = admin_settings.get('default_category', '').strip()
     if pref_cat in categories:
         categories.remove(pref_cat); categories.insert(0, pref_cat)
@@ -197,14 +211,21 @@ else:
     for i, cat in enumerate(categories):
         with tabs[i]:
             cat_quizzes = [q for q in quiz_data_list if (q.get('Category') or '미분류') == cat]
-            cols = st.columns(2)
+            
+            # 📌 2열 그리드 수동 생성 영역
+            st.markdown('<div class="quiz-grid">', unsafe_allow_html=True)
             for j, q in enumerate(cat_quizzes):
                 q_title = q['Title']
-                label = f"🔥 {q_title}" if q_title == st.session_state.selected_quiz_title else q_title
-                if cols[j % 2].button(label, use_container_width=True, key=f"btn_{cat}_{j}"):
+                is_selected = (q_title == st.session_state.selected_quiz_title)
+                active_class = "active-quiz" if is_selected else ""
+                
+                # HTML 버튼 생성 및 클릭 감지를 위해 버튼 객체 생성
+                if st.button(f"{'🔥' if is_selected else ''} {q_title}", key=f"btn_{cat}_{j}", use_container_width=True):
                     st.session_state.selected_quiz_title = q_title
                     st.session_state.quiz_finished = False; st.session_state.start_time = None
+                    if st.session_state.player_name in active_users: active_users.discard(st.session_state.player_name)
                     st.session_state.user_answers = {}; st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
     if st.session_state.selected_quiz_title:
         selected_quiz_data = next((q for q in quiz_data_list if q['Title'] == st.session_state.selected_quiz_title), None)
