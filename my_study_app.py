@@ -8,34 +8,32 @@ import qrcode
 from io import BytesIO
 from collections import Counter
 
-# --- 0. 페이지 설정 및 강력한 모바일 2열 고정 패치 ---
+# --- 0. 페이지 설정 및 모바일 2열 패치 ---
 st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
 
-# 📱 어떤 모바일 환경(웹/앱)에서도 퀴즈 버튼을 2열로 강제하는 마법의 CSS
+# 📱 버튼 사라짐 방지 + 모바일 2열 유지 최적화 CSS
 st.markdown("""
 <style>
-/* 탭 내부의 컬럼 레이아웃 강제 고정 */
-[data-testid="stHorizontalBlock"] {
-    display: flex !important;
+/* 탭 안의 버튼들을 감싸는 영역을 2열로 배치 */
+[data-testid="stTabs"] div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column;"] {
     flex-direction: row !important;
     flex-wrap: wrap !important;
-    width: 100% !important;
+    gap: 10px !important;
 }
 
-/* 퀴즈 선택 버튼이 있는 컬럼만 정밀 타겟팅 */
+/* 탭 내의 각 버튼(컬럼) 너비 조정 */
 [data-testid="stTabs"] [data-testid="column"] {
-    width: calc(50% - 10px) !important;
-    flex: 1 1 calc(50% - 10px) !important;
-    min-width: calc(50% - 10px) !important;
-    margin: 5px !important;
+    flex: 1 1 calc(50% - 15px) !important;
+    min-width: calc(45%) !important;
+    max-width: calc(50%) !important;
 }
 
-/* 모바일 주소창 등이 있어도 버튼 크기 유지 */
-@media (max-width: 768px) {
-    div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column;"] > div[data-testid="stVerticalBlock"] {
-        flex-direction: row !important;
-        flex-wrap: wrap !important;
-    }
+/* 버튼 텍스트가 잘리지 않도록 높이 자동 조절 */
+.stButton > button {
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -60,7 +58,7 @@ def get_worksheet(sheet_name, columns):
         st.error(f"구글 시트 연결 오류: {e}")
         return None
 
-# --- 2. 데이터 처리 및 삭제 로직 ---
+# --- 2. 데이터 로직 ---
 @st.cache_data(ttl=15, show_spinner=False)
 def get_all_quizzes():
     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
@@ -72,8 +70,7 @@ def get_all_quizzes():
 @st.cache_data(ttl=15, show_spinner=False)
 def get_all_results():
     res_ws = get_worksheet("Results", ["QuizTitle", "User", "Score", "Duration", "Time"])
-    if res_ws:
-        return res_ws.get_all_records()
+    if res_ws: return res_ws.get_all_records()
     return []
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -95,8 +92,7 @@ def delete_quiz_from_gsheet(quiz_title):
                 ws.delete_rows(cell.row)
                 get_all_quizzes.clear()
                 return True
-        except Exception:
-            pass
+        except Exception: pass
     return False
 
 def save_result_to_gsheet(quiz_title, user_id, score, duration, wrong_keywords):
@@ -127,11 +123,11 @@ def robust_parse(text):
                        "a": ans_map.get(ans_char, 0), "k": ks[i] if i < len(ks) else "미분류"})
     return parsed
 
-# --- 3. 기본 설정 변수 ---
+# --- 3. 기본 설정 ---
 APP_URL = "https://hoya-quiz-studio.streamlit.app"
 ADMIN_PASSWORD = "1234"
 
-# --- 4. 세션 및 접속자 상태 관리 ---
+# --- 4. 세션 관리 ---
 if 'player_name' not in st.session_state: st.session_state.player_name = ""
 if 'start_time' not in st.session_state: st.session_state.start_time = None
 if 'quiz_finished' not in st.session_state: st.session_state.quiz_finished = False
@@ -143,64 +139,48 @@ def get_admin_settings():
     return {"feedback_mode": "⚡ 실시간 팩폭 (즉시 확인)", "allow_change": False, "default_category": ""}
 
 @st.cache_resource
-def get_active_users():
-    return set()
+def get_active_users(): return set()
 
 admin_settings = get_admin_settings()
-if "feedback_mode" not in admin_settings: admin_settings["feedback_mode"] = "⚡ 실시간 팩폭 (즉시 확인)"
-if "default_category" not in admin_settings: admin_settings["default_category"] = ""
 active_users = get_active_users()
 
 # --- 5. UI (사이드바) ---
 with st.sidebar:
-    st.markdown(f"<div style='display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px;'><h3 style='margin: 0;'>관리자 설정</h3><span style='font-size: 14px; color: #4CAF50;'>🟢 풀이중: {len(active_users)}명</span></div>", unsafe_allow_html=True)
-    pw_input = st.text_input("비밀번호", type="password", placeholder="Password", label_visibility="collapsed")
+    st.markdown(f"<div style='display: flex; justify-content: space-between; align-items: center;'><h3 style='margin: 0;'>관리자 설정</h3><span style='font-size: 14px; color: #4CAF50;'>🟢 풀이중: {len(active_users)}명</span></div>", unsafe_allow_html=True)
+    pw_input = st.text_input("비밀번호", type="password", placeholder="PW", label_visibility="collapsed")
     
     if pw_input == ADMIN_PASSWORD:
         st.success("인증됨")
         weak_points = get_weak_points_from_gsheet()
         st.caption(f"📊 취약: {weak_points}")
-        full_prompt = f"문서 바탕으로 5문제 출제. 친구들이 자주 틀린 주제({weak_points}) 참고.\n[Q]문제 [O]①.. [A]정답 [K]키워드"
-        st.code(full_prompt, language="text")
-        
-        st.markdown("**⚙️ 퀴즈 룰 설정**")
-        admin_settings['default_category'] = st.text_input("📌 처음 열릴 카테고리", value=admin_settings.get('default_category', ''), placeholder="예: 배관기초")
+        st.markdown("**⚙️ 설정**")
+        admin_settings['default_category'] = st.text_input("📌 기본 카테고리", value=admin_settings.get('default_category', ''))
         mode_options = ["⚡ 실시간 팩폭 (즉시 확인)", "🏁 최후의 심판 (마지막에 한 번에)"]
-        selected_mode = st.selectbox("채점 방식", mode_options, index=mode_options.index(admin_settings['feedback_mode']), label_visibility="collapsed")
-        admin_settings['feedback_mode'] = selected_mode
-        admin_settings['allow_change'] = (selected_mode != "⚡ 실시간 팩폭 (즉시 확인)")
-        st.caption(f"{'🔒 답안 수정 불가' if not admin_settings['allow_change'] else '🔓 답안 수정 자유'}")
+        admin_settings['feedback_mode'] = st.selectbox("채점", mode_options, index=mode_options.index(admin_settings['feedback_mode']))
+        admin_settings['allow_change'] = (admin_settings['feedback_mode'] != mode_options[0])
         
-        with st.expander("🆕 새 퀴즈 만들기"):
-            new_category = st.text_input("카테고리")
-            new_title = st.text_input("퀴즈 제목")
-            admin_text = st.text_area("결과물 붙여넣기", height=120)
-            if st.button("🚀 신규 배포", use_container_width=True):
-                if new_category and new_title and admin_text:
-                    ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
-                    ws.append_row([new_category, new_title, admin_text, time.strftime('%Y-%m-%d %H:%M:%S')])
-                    get_all_quizzes.clear()
-                    st.success("완료!"); st.rerun()
+        with st.expander("🆕 새 퀴즈"):
+            c1 = st.text_input("카테고리"); t1 = st.text_input("제목"); tx = st.text_area("내용")
+            if st.button("🚀 배포"):
+                ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
+                ws.append_row([c1, t1, tx, time.strftime('%Y-%m-%d %H:%M:%S')])
+                get_all_quizzes.clear(); st.rerun()
+        with st.expander("🗑️ 삭제"):
+            for idx, q in enumerate(get_all_quizzes()):
+                c1, c2 = st.columns([3, 1])
+                c1.caption(f"{q['Title']}")
+                if c2.button("X", key=f"del_{idx}"):
+                    if delete_quiz_from_gsheet(q['Title']): st.rerun()
 
-        with st.expander("🗑️ 퀴즈 삭제"):
-            all_quizzes = get_all_quizzes()
-            for idx, q in enumerate(all_quizzes):
-                col1, col2 = st.columns([3, 1])
-                col1.caption(f"{q['Category']} - {q['Title']}")
-                if col2.button("X", key=f"del_btn_{idx}"):
-                    if delete_quiz_from_gsheet(q['Title']):
-                        if st.session_state.selected_quiz_title == q['Title']: st.session_state.selected_quiz_title = ""
-                        st.rerun()
-    
     st.divider()
     qr = qrcode.QRCode(version=1, box_size=3, border=2)
     qr.add_data(APP_URL); qr.make(fit=True)
-    buf = BytesIO(); qr.make_image(fill_color="black", back_color="white").save(buf)
-    st.image(buf.getvalue(), width=120)
+    buf = BytesIO(); qr.make_image().save(buf)
+    st.image(buf.getvalue(), width=100)
 
 # --- 6. 메인 영역 ---
 st.title("🧪 우정 파괴소")
-st.text_input("👤 참가자 이름", key="player_name", placeholder="이름을 한 번만 입력하면 계속 유지됩니다")
+st.text_input("👤 참가자 이름", key="player_name", placeholder="이름을 입력하세요")
 st.divider()
 
 quiz_data_list = get_all_quizzes()
@@ -208,13 +188,9 @@ if not quiz_data_list:
     st.info("등록된 퀴즈가 없습니다.")
 else:
     st.subheader("🎯 퀴즈 선택")
-    categories = []
-    for q in quiz_data_list:
-        cat = q.get('Category', '미분류') or '미분류'
-        if cat not in categories: categories.append(cat)
-    
+    categories = list(set([q.get('Category', '미분류') or '미분류' for q in quiz_data_list]))
     pref_cat = admin_settings.get('default_category', '').strip()
-    if pref_cat and pref_cat in categories:
+    if pref_cat in categories:
         categories.remove(pref_cat); categories.insert(0, pref_cat)
         
     tabs = st.tabs(categories)
@@ -224,31 +200,29 @@ else:
             cols = st.columns(2)
             for j, q in enumerate(cat_quizzes):
                 q_title = q['Title']
-                btn_label = f"🔥 {q_title}" if q_title == st.session_state.selected_quiz_title else q_title
-                if cols[j % 2].button(btn_label, use_container_width=True, key=f"btn_{cat}_{q_title}_{j}"):
+                label = f"🔥 {q_title}" if q_title == st.session_state.selected_quiz_title else q_title
+                if cols[j % 2].button(label, use_container_width=True, key=f"btn_{cat}_{j}"):
                     st.session_state.selected_quiz_title = q_title
                     st.session_state.quiz_finished = False; st.session_state.start_time = None
-                    if st.session_state.player_name in active_users: active_users.discard(st.session_state.player_name)
                     st.session_state.user_answers = {}; st.rerun()
 
     if st.session_state.selected_quiz_title:
         selected_quiz_data = next((q for q in quiz_data_list if q['Title'] == st.session_state.selected_quiz_title), None)
         if selected_quiz_data:
             quiz_title = selected_quiz_data['Title']; quiz_content = robust_parse(selected_quiz_data['Content'])
-            with st.expander(f"📊 실시간 순위", expanded=False):
+            
+            with st.expander("📊 순위표"):
                 if st.button("🔄 갱신"): get_all_results.clear(); st.rerun()
-                all_res = get_all_results()
-                quiz_res = [r for r in all_res if r.get('QuizTitle') == quiz_title]
-                if quiz_res: st.dataframe(pd.DataFrame(quiz_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]), use_container_width=True)
+                res = [r for r in get_all_results() if r.get('QuizTitle') == quiz_title]
+                if res: st.dataframe(pd.DataFrame(res).sort_values(by=['Score', 'Duration'], ascending=[False, True]), use_container_width=True)
                 else: st.caption("기록 없음")
 
             if not st.session_state.player_name:
-                st.warning("👆 위에서 이름을 입력하세요!")
+                st.warning("👤 이름을 먼저 입력하세요!")
             elif st.session_state.start_time is None and not st.session_state.quiz_finished:
                 if st.button(f"🚀 {quiz_title} 시작!", use_container_width=True):
                     st.session_state.start_time = time.time(); active_users.add(st.session_state.player_name); st.rerun()
             elif st.session_state.start_time and not st.session_state.quiz_finished:
-                st.subheader(f"🔥 {st.session_state.player_name}의 도전")
                 if admin_settings['feedback_mode'] == "⚡ 실시간 팩폭 (즉시 확인)":
                     for idx, item in enumerate(quiz_content):
                         st.markdown(f"**Q{idx+1}. {item['q']}**")
@@ -258,44 +232,31 @@ else:
                             if ans == item['o'][item['a']]: st.success("⭕ 정답!")
                             else: st.error(f"❌ 오답! (정답: {item['o'][item['a']]})")
                         st.divider()
-                    if st.button("🏁 제출하기", use_container_width=True):
+                    if st.button("🏁 제출"):
                         if len(st.session_state.user_answers) < len(quiz_content): st.warning("다 푸세요!")
                         else:
                             duration = time.time() - st.session_state.start_time
-                            wrong_ks, review_data = [], []
-                            for k_i, q in enumerate(quiz_content):
-                                u_ans = st.session_state.user_answers.get(f"ans_{k_i}"); c_ans = q['o'][q['a']]
-                                is_correct = (u_ans == c_ans)
-                                if not is_correct: wrong_ks.append(q['k'])
-                                review_data.extend([{"q": q['q'], "u_ans": u_ans, "c_ans": c_ans, "is_correct": is_correct}])
-                            save_result_to_gsheet(quiz_title, st.session_state.player_name, ((len(quiz_content)-len(wrong_ks))/len(quiz_content))*100, duration, wrong_ks)
-                            st.session_state.quiz_finished = True; st.session_state.last_score = ((len(quiz_content)-len(wrong_ks))/len(quiz_content))*100; st.session_state.review_data = review_data
+                            wrong = [q['k'] for k_i, q in enumerate(quiz_content) if st.session_state.user_answers.get(f"ans_{k_i}") != q['o'][q['a']]]
+                            score = ((len(quiz_content)-len(wrong))/len(quiz_content))*100
+                            save_result_to_gsheet(quiz_title, st.session_state.player_name, score, duration, wrong)
+                            st.session_state.quiz_finished = True; st.session_state.last_score = score
                             active_users.discard(st.session_state.player_name); st.rerun()
                 else:
                     with st.form("quiz_form"):
                         for idx, item in enumerate(quiz_content):
                             st.markdown(f"**Q{idx+1}. {item['q']}**")
                             st.radio(f"답안{idx}", item['o'], key=f"ans_form_{idx}", index=None, label_visibility="collapsed")
-                            st.divider()
-                        if st.form_submit_button("🏁 모든 답안 제출하기", use_container_width=True):
+                        if st.form_submit_button("🏁 제출", use_container_width=True):
                             if any(st.session_state.get(f"ans_form_{i}") is None for i in range(len(quiz_content))): st.warning("다 푸세요!")
                             else:
                                 duration = time.time() - st.session_state.start_time
-                                wrong_ks, review_data = [], []
-                                for k_i, q in enumerate(quiz_content):
-                                    u_ans = st.session_state.get(f"ans_form_{k_i}"); c_ans = q['o'][q['a']]
-                                    is_correct = (u_ans == c_ans)
-                                    if not is_correct: wrong_ks.append(q['k'])
-                                    review_data.append({"q": q['q'], "u_ans": u_ans, "c_ans": c_ans, "is_correct": is_correct})
-                                save_result_to_gsheet(quiz_title, st.session_state.player_name, ((len(quiz_content)-len(wrong_ks))/len(quiz_content))*100, duration, wrong_ks)
-                                st.session_state.quiz_finished = True; st.session_state.last_score = ((len(quiz_content)-len(wrong_ks))/len(quiz_content))*100; st.session_state.review_data = review_data
+                                wrong = [q['k'] for k_i, q in enumerate(quiz_content) if st.session_state.get(f"ans_form_{k_i}") != q['o'][q['a']]]
+                                score = ((len(quiz_content)-len(wrong))/len(quiz_content))*100
+                                save_result_to_gsheet(quiz_title, st.session_state.player_name, score, duration, wrong)
+                                st.session_state.quiz_finished = True; st.session_state.last_score = score
                                 active_users.discard(st.session_state.player_name); st.rerun()
 
             if st.session_state.quiz_finished:
-                st.balloons(); st.success(f"🎉 **{int(st.session_state.last_score)}점**!")
-                if admin_settings['feedback_mode'] != "⚡ 실시간 팩폭 (즉시 확인)":
-                    with st.expander("📝 채점 결과", expanded=True):
-                        for i, r in enumerate(st.session_state.review_data):
-                            st.markdown(f"**Q{i+1}. {r['q']}**\n{'⭕ 정답' if r['is_correct'] else f'❌ 오답 (정답: {r['c_ans']})'}")
+                st.balloons(); st.success(f"🏁 점수: {int(st.session_state.last_score)}점!")
                 if st.button("다른 퀴즈 하기"):
                     st.session_state.quiz_finished = False; st.session_state.start_time = None; st.session_state.user_answers = {}; st.rerun()
