@@ -81,16 +81,16 @@ def save_result_to_gsheet(quiz_title, user_id, score, duration, wrong_keywords):
     get_weak_points_from_gsheet.clear()
 
 def robust_parse(text):
-    # 1. 문제를 [Q] 또는 [Q1], [Q2] 단위로 크게 쪼갭니다.
-    # (다음 [Q]가 나오기 전까지의 모든 내용을 하나의 문제 덩어리로 인식)
-    raw_problems = re.split(r"\[Q\d?\]", text)
+    # 1. [Q1], [Q2] 등 문제 번호 단위로 크게 쪼갭니다.
+    raw_problems = re.split(r"\[Q\d+\]", text)
     
     parsed = []
-    # split 결과의 첫 번째 요소는 보통 빈 문자열이므로 제외하고 반복
-    for prob in raw_problems[1:]:
+    for prob in raw_problems:
+        if not prob.strip(): continue # 빈 데이터 스킵
+        
         try:
-            # 2. 각 문제 덩어리 안에서 [O], [A], [K]를 기준으로 데이터를 분리합니다.
-            # [O] 앞부분은 전부 지문 및 문제(Question Content)로 간주합니다.
+            # 2. [O], [A], [K] 태그를 기준으로 분리합니다.
+            # 이 태그들이 나오기 전까지의 모든 텍스트는 지문+문제로 간주합니다.
             parts = re.split(r"(\[O\]|\[A\]|\[K\])", prob)
             
             q_content = ""
@@ -99,9 +99,10 @@ def robust_parse(text):
             k_content = "미분류"
             
             for i in range(len(parts)):
-                tag = parts[i]
-                if i == 0: # 태그가 나오기 전 첫 부분은 문제 내용
-                    q_content = tag.strip()
+                tag = parts[i].strip()
+                if i == 0: 
+                    # 태그 이전의 모든 텍스트(지문 + 발문) 보존
+                    q_content = parts[i].strip()
                 elif tag == "[O]":
                     o_content = parts[i+1].strip()
                 elif tag == "[A]":
@@ -109,24 +110,26 @@ def robust_parse(text):
                 elif tag == "[K]":
                     k_content = parts[i+1].strip()
 
-            # 3. 보기(Options) 파싱 (①~⑤ 기호 기준)
+            # 3. 보기(Options) 추출 (①~⑤ 기호 기준)
+            # 지문 내부의 번호와 헷갈리지 않도록 [O] 영역 안에서만 찾습니다.
             opts = re.findall(r'[①-⑤]\s*([^①-⑤\n\r]+)', o_content)
             if not opts:
-                # 기호가 없으면 콤마 등으로 분리 시도
                 opts = [o.strip() for o in o_content.split(',') if o.strip()]
             
-            # 4. 정답 인덱스 변환
+            # 4. 정답 인덱스 (A 태그의 첫 글자 추출)
             ans_map = {'①':0, '②':1, '③':2, '④':3, '⑤':4, '1':0, '2':1, '3':2, '4':3, '5':4}
-            ans_char = a_content[0] if a_content else "1"
-            ans_idx = ans_map.get(ans_char, 0)
+            # 숫자나 기호만 추출
+            ans_match = re.search(r'[①-⑤1-5]', a_content)
+            ans_idx = ans_map.get(ans_match.group(), 0) if ans_match else 0
             
-            parsed.append({
-                "q": q_content.replace('**', '').strip(), 
-                "o": [o.strip() for o in opts],
-                "a": ans_idx, 
-                "k": k_content
-            })
-        except Exception as e:
+            if q_content:
+                parsed.append({
+                    "q": q_content.replace('**', '').strip(), 
+                    "o": [o.strip() for o in opts],
+                    "a": ans_idx, 
+                    "k": k_content
+                })
+        except Exception:
             continue
             
     return parsed
