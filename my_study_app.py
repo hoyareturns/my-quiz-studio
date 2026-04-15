@@ -8,6 +8,23 @@ import qrcode
 from io import BytesIO
 from collections import Counter
 
+# --- 0. 페이지 기본 설정 및 모바일 UI 강제 패치 ---
+st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
+
+# 📱 모바일(화면 좁을 때) 퀴즈 버튼 2열 강제 유지 CSS
+st.markdown("""
+<style>
+@media (max-width: 768px) {
+    [data-testid="stTabs"] [data-testid="column"] {
+        width: 48% !important;
+        flex: 1 1 48% !important;
+        min-width: 48% !important;
+        padding: 0 2px !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 # --- 1. 구글 시트 연동 설정 (캐시 적용) ---
 @st.cache_resource
 def get_gspread_client():
@@ -96,11 +113,9 @@ def robust_parse(text):
                        "a": ans_map.get(ans_char, 0), "k": ks[i] if i < len(ks) else "미분류"})
     return parsed
 
-# --- 2. 기본 설정 ---
+# --- 2. 기본 설정 변수 ---
 APP_URL = "https://hoya-quiz-studio.streamlit.app"
 ADMIN_PASSWORD = "1234"
-
-st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
 
 # --- 4. 세션 및 접속자 상태 관리 ---
 if 'player_name' not in st.session_state: st.session_state.player_name = ""
@@ -156,7 +171,6 @@ with st.sidebar:
         
         st.markdown("**⚙️ 퀴즈 룰 설정**")
         
-        # 📌 1. 기본 카테고리 지정 메뉴 추가
         admin_settings['default_category'] = st.text_input("📌 처음 열릴 카테고리", value=admin_settings.get('default_category', ''), placeholder="예: 배관기초 (비우면 최신순)")
         
         mode_options = ["⚡ 실시간 팩폭 (즉시 확인)", "🏁 최후의 심판 (마지막에 한 번에)"]
@@ -218,11 +232,10 @@ else:
         cat = q.get('Category', '미분류') or '미분류'
         if cat not in categories: categories.append(cat)
             
-    # 📌 2. 기본 카테고리를 맨 앞으로 강제 이동 (에러 방지 안전망 포함)
     pref_cat = admin_settings.get('default_category', '').strip()
     if pref_cat and pref_cat in categories:
         categories.remove(pref_cat)
-        categories.insert(0, pref_cat) # 맨 앞으로 삽입
+        categories.insert(0, pref_cat) 
         
     tabs = st.tabs(categories)
     
