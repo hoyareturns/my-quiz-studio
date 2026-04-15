@@ -81,19 +81,54 @@ def save_result_to_gsheet(quiz_title, user_id, score, duration, wrong_keywords):
     get_weak_points_from_gsheet.clear()
 
 def robust_parse(text):
-    qs = re.findall(r"\[Q\d?\]\s*(.*)", text)
-    os_raw = re.findall(r"\[O\]\s*(.*)", text)
-    as_raw = re.findall(r"\[A\]\s*(.*)", text)
-    ks = re.findall(r"\[K\]\s*(.*)", text)
+    # 1. 문제를 [Q] 또는 [Q1], [Q2] 단위로 크게 쪼갭니다.
+    # (다음 [Q]가 나오기 전까지의 모든 내용을 하나의 문제 덩어리로 인식)
+    raw_problems = re.split(r"\[Q\d?\]", text)
+    
     parsed = []
-    ans_map = {'①':0, '②':1, '③':2, '④':3, '⑤':4, '1':0, '2':1, '3':2, '4':3, '5':4}
-    for i in range(len(qs)):
-        if i >= len(os_raw) or i >= len(as_raw): break
-        opts = re.findall(r'[①-⑤]\s*([^①-⑤]+)', os_raw[i])
-        if not opts: opts = [o.strip() for o in os_raw[i].split(',') if o.strip()]
-        ans_char = as_raw[i].strip()[0] if as_raw[i] else "1"
-        parsed.append({"q": qs[i].replace('**', '').strip(), "o": [o.strip() for o in opts],
-                       "a": ans_map.get(ans_char, 0), "k": ks[i] if i < len(ks) else "미분류"})
+    # split 결과의 첫 번째 요소는 보통 빈 문자열이므로 제외하고 반복
+    for prob in raw_problems[1:]:
+        try:
+            # 2. 각 문제 덩어리 안에서 [O], [A], [K]를 기준으로 데이터를 분리합니다.
+            # [O] 앞부분은 전부 지문 및 문제(Question Content)로 간주합니다.
+            parts = re.split(r"(\[O\]|\[A\]|\[K\])", prob)
+            
+            q_content = ""
+            o_content = ""
+            a_content = "1"
+            k_content = "미분류"
+            
+            for i in range(len(parts)):
+                tag = parts[i]
+                if i == 0: # 태그가 나오기 전 첫 부분은 문제 내용
+                    q_content = tag.strip()
+                elif tag == "[O]":
+                    o_content = parts[i+1].strip()
+                elif tag == "[A]":
+                    a_content = parts[i+1].strip()
+                elif tag == "[K]":
+                    k_content = parts[i+1].strip()
+
+            # 3. 보기(Options) 파싱 (①~⑤ 기호 기준)
+            opts = re.findall(r'[①-⑤]\s*([^①-⑤\n\r]+)', o_content)
+            if not opts:
+                # 기호가 없으면 콤마 등으로 분리 시도
+                opts = [o.strip() for o in o_content.split(',') if o.strip()]
+            
+            # 4. 정답 인덱스 변환
+            ans_map = {'①':0, '②':1, '③':2, '④':3, '⑤':4, '1':0, '2':1, '3':2, '4':3, '5':4}
+            ans_char = a_content[0] if a_content else "1"
+            ans_idx = ans_map.get(ans_char, 0)
+            
+            parsed.append({
+                "q": q_content.replace('**', '').strip(), 
+                "o": [o.strip() for o in opts],
+                "a": ans_idx, 
+                "k": k_content
+            })
+        except Exception as e:
+            continue
+            
     return parsed
 
 # --- 3. 기본 설정 변수 ---
