@@ -84,22 +84,35 @@ def get_all_results():
     return ws.get_all_records() if ws else []
 
 def robust_parse(text):
+    # [Q]가 처음 등장하는 위치 이전의 모든 텍스트(인사말 등)를 삭제합니다.
+    first_q = text.find("[Q")
+    if first_q != -1:
+        text = text[first_q:]
+    
     chunks = re.split(r"\[Q\d*\]", text)
     parsed = []
     ans_map = {'①':0, '②':1, '③':2, '④':3, '⑤':4, '1':0, '2':1, '3':2, '4':3, '5':4}
+    
     for chunk in chunks:
         if not chunk.strip(): continue
         try:
             parts = re.split(r"(\[O\]|\[A\]|\[K\])", chunk)
             q_raw = parts[0].strip()
+            
+            # 필수 태그([O], [A])가 없는 덩어리는 진짜 문제가 아니므로 건너뜁니다.
+            if "[O]" not in chunk or "[A]" not in chunk:
+                continue
+                
             o_raw, a_raw, k_raw = "", "1", "미분류"
             for i in range(len(parts)):
                 tag = parts[i].strip()
                 if tag == "[O]": o_raw = parts[i+1].strip()
                 elif tag == "[A]": a_raw = parts[i+1].strip()
                 elif tag == "[K]": k_raw = parts[i+1].strip()
+            
             opts = re.findall(r'[①-⑤]\s*([^①-⑤\n\r]+)', o_raw)
             if not opts: opts = [o.strip() for o in o_raw.split(',') if o.strip()]
+            
             ans_char = a_raw.strip()[0] if a_raw else "1"
             parsed.append({"q": q_raw, "o": [o.strip() for o in opts], "a": ans_map.get(ans_char, 0), "k": k_raw})
         except: continue
