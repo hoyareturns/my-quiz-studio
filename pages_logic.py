@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import time
+import streamlit.components.v1 as components
 from database import get_chats, save_chat, save_setting, get_all_quizzes, save_result
 
-# --- 🏆 구역별 최강자 로직 (유지) ---
+# --- 🏆 구역별 최강자 로직 ---
 def show_season_leaderboard(season_res, season_start):
     st.subheader("🏆 구역별 최강자")
     if not season_res: st.info("기록 없음")
@@ -14,25 +15,46 @@ def show_season_leaderboard(season_res, season_start):
         for idx, (u, c) in enumerate(top1['User'].value_counts().items()):
             st.write(f"{idx+1}위: **{u}** ({c}회 1등)")
 
-# --- 💬 우정파괴창 로직 (유지) ---
+# --- 💬 우정파괴채팅 로직 (명칭 변경 및 자동 점프 적용) ---
 def show_chat_room(player_name):
+    # 📌 점프를 위한 상단 앵커
+    st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
+    
     c1, c2 = st.columns([3, 1])
-    if c2.button("새로고침"): get_chats.clear(); st.rerun()
+    c1.subheader("💬 우정파괴채팅") # 명칭 변경
+    if c2.button("새로고침", key="chat_refresh"): 
+        get_chats.clear()
+        st.rerun()
+    
     chat_box = st.container(height=400)
     for c in get_chats():
+        t_str = str(c.get('Time', ''))[:16]
         cls = "chat-sys" if c["User"] == "💻 시스템" else "chat-user"
-        chat_box.markdown(f'<div class="chat-msg"><span class="{cls}">{c["User"]}:</span>{c["Message"]}</div>', unsafe_allow_html=True)
+        chat_box.markdown(f'<div class="chat-msg"><span class="{cls}">{c["User"]}:</span>{c["Message"]}<span class="chat-time">{t_str}</span></div>', unsafe_allow_html=True)
+    
     with st.form("chat_input", clear_on_submit=True):
         m = st.text_input("메시지 입력", label_visibility="collapsed")
-        if st.form_submit_button("전송") and m: save_chat(player_name, m); st.rerun()
+        if st.form_submit_button("전송", use_container_width=True) and m:
+            save_chat(player_name, m)
+            st.session_state.chat_jump = True # 채팅 전송 후 위치 고정 신호
+            st.rerun()
 
-# --- 🎯 퀴즈 선택 및 풀이 로직 (빈 공간 예약석 패치) ---
+    # 📌 채팅 탭 진입 시나 메시지 전송 시 상단으로 자동 스크롤
+    components.html(
+        """
+        <script>
+            window.parent.document.getElementById('chat_top_anchor').scrollIntoView({behavior: 'smooth'});
+        </script>
+        """,
+        height=0
+    )
+
+# --- 🎯 퀴즈 선택 및 풀이 로직 (이미지 제거 및 앵커 점프 유지) ---
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
     all_cats = list(dict.fromkeys([q.get('Category','미분류') for q in quizzes]))
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
     all_display_cats = list(dict.fromkeys(custom_cats + all_cats))
     
-    # 기본 카테고리 설정
     default_cat = app_settings.get('default_category', all_display_cats[0] if all_display_cats else "")
     if default_cat in all_display_cats:
         all_display_cats.remove(default_cat)
@@ -42,16 +64,11 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
     
     for i, cat in enumerate(all_display_cats):
         with tabs[i]:
-            # 📌 [핵심 1] 상세 정보가 나타날 '예약석'을 버튼 목록보다 위에 선언
-            # 이렇게 하면 버튼을 누르는 순간 이 자리에 랭킹과 시작 버튼이 쏙 들어갑니다.
-            detail_placeholder = st.empty()
-
             cat_qs = sorted([q for q in quizzes if q.get('Category') == cat], key=lambda x: x['Title'])
             
             if not cat_qs: 
                 st.caption("등록된 퀴즈 없음")
             else:
-                st.caption("👇 퀴즈를 선택하면 위쪽에 상세 정보가 나타납니다.")
                 cols = st.columns(2)
                 for j, q in enumerate(cat_qs):
                     if cols[j%2].button(q['Title'], use_container_width=True, key=f"q_{i}_{j}"):
@@ -60,23 +77,32 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.user_answers = {}
                         st.session_state.answered_list = []
                         st.session_state.start_time = None
+                        st.session_state.should_jump = True
                         st.rerun()
 
-            # 📌 [핵심 2] 선택된 퀴즈 정보를 '예약석(placeholder)' 안으로 밀어넣기
             if st.session_state.selected_quiz:
                 selected_q_item = next((q for q in quizzes if q['Title'] == st.session_state.selected_quiz), None)
                 if selected_q_item and selected_q_item.get('Category') == cat:
-                    with detail_placeholder.container():
-                        render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
+                    st.markdown("<div id='quiz_bottom_anchor'></div>", unsafe_allow_html=True)
+                    render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
+                    
+                    if st.session_state.get('should_jump', False):
+                        components.html(
+                            """
+                            <script>
+                                window.parent.document.getElementById('quiz_bottom_anchor').scrollIntoView({behavior: 'smooth'});
+                            </script>
+                            """,
+                            height=0
+                        )
+                        st.session_state.should_jump = False
 
-# --- 🛠️ 퀴즈 상세 화면 렌더링 함수 ---
+# --- 🛠️ 퀴즈 상세 화면 렌더링 함수 (이미지 제거 버전 유지) ---
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
-    # 시각적 구분 박스
     with st.container(border=True):
         st.markdown(f"### 📍 {q_item['Title']}")
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
         
-        # 지배자 랭킹
         with st.expander("🥇 이 구역의 지배자들", expanded=True):
             if q_res:
                 s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
@@ -86,19 +112,16 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                 if taunt: st.markdown(f'<div class="taunt-box">"{taunt}"<div class="taunt-author">- 1등 {s_df.iloc[0]["User"]} -</div></div>', unsafe_allow_html=True)
             else: st.info("첫 지배자가 되어보세요!")
 
-        # 시작 버튼
         if st.session_state.start_time is None and not st.session_state.quiz_finished:
             if st.button("🚀 시험 시작하기", use_container_width=True, type="primary", key=f"start_{q_item['Title']}"): 
                 st.session_state.start_time = time.time()
                 st.rerun()
         
-        # 퀴즈 풀이 로직
         elif not st.session_state.quiz_finished:
             parsed = robust_parse(q_item['Content'])
             is_realtime = "실시간" in app_settings.get('feedback_mode', '')
             for idx, it in enumerate(parsed):
                 st.markdown(f"**Q{idx+1}.**")
-                # 지문 처리
                 q_text = it['q']
                 if "<지문>" in q_text:
                     parts = q_text.split("<지문>")
