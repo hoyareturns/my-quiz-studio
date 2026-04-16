@@ -10,7 +10,7 @@ from database import (get_all_quizzes, get_all_results, get_settings, save_setti
                       save_result)
 from utils import robust_parse
 
-# 💡 [핵심 패치] 한국 표준시(KST) 계산 함수
+# 💡 한국 표준시(KST) 계산 함수
 def get_kst_time():
     return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
 
@@ -27,8 +27,7 @@ st.markdown("""
 }
 .question-header { font-size: 18px; font-weight: 800; color: #ff4b4b; margin-top: 30px; }
 .chat-msg { padding: 10px; border-radius: 10px; margin-bottom: 10px; background-color: var(--secondary-background-color); color: var(--text-color); }
-.chat-user { font-weight: bold; color: var(--primary-color); font-size: 14px; }
-/* 날짜와 시간이 모두 보이도록 너비 조정 */
+.chat-user { font-weight: bold; color: var(--primary-color); font-size: 14px; margin-right: 5px; }
 .chat-time { font-size: 11px; opacity: 0.6; float: right; margin-left: 10px; }
 @media (max-width: 768px) { [data-testid="stTabs"] [data-testid="column"] { flex: 1 1 45% !important; } }
 </style>
@@ -108,7 +107,6 @@ with st.sidebar:
                 if nc and nt and nx:
                     from database import get_worksheet
                     ws_q = get_worksheet("Quizzes")
-                    # 한국 시간으로 퀴즈 배포 시간 기록
                     if ws_q: ws_q.append_row([nc, nt, nx, get_kst_time()]); get_all_quizzes.clear(); st.success("배포 성공!"); st.rerun()
 
         with st.expander("✏️ 퀴즈 수정/삭제"):
@@ -137,9 +135,9 @@ if view_mode == "💬 우정파괴창":
         
     chat_container = st.container(height=400)
     for chat in get_chats():
-        # 📌 [시간 표기 개선] '2026-04-16 09:59:46' 문자열 중 앞 16자리(분 단위까지)를 잘라서 날짜와 시간 모두 표기
         chat_time_str = str(chat.get('Time', ''))[:16] 
-        chat_container.markdown(f'<div class="chat-msg"><span class="chat-user">{chat["User"]}</span> <span class="chat-time">{chat_time_str}</span><br>{chat["Message"]}</div>', unsafe_allow_html=True)
+        # 📌 [UI 수정] 줄바꿈(<br>)을 삭제하고 콜론(:)을 붙여 한 줄로 출력되도록 변경
+        chat_container.markdown(f'<div class="chat-msg"><span class="chat-user">{chat["User"]}:</span>{chat["Message"]}<span class="chat-time">{chat_time_str}</span></div>', unsafe_allow_html=True)
         
     with st.form("chat", clear_on_submit=True):
         m = st.text_input("메시지 입력", label_visibility="collapsed")
