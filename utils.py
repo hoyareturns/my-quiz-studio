@@ -1,6 +1,20 @@
 import re
 
 def robust_parse(text):
+    # 📌 [추가] LaTeX 기호 및 특수 기호 전처리
+    # Streamlit이 $ 기호를 만나 수식 모드로 오작동하는 것을 방지하고 기호를 정제합니다.
+    if text:
+        # 1. LaTeX 형태의 도(degree) 기호 치환
+        text = text.replace(r"^{\circ}", "°")
+        text = text.replace(r"^\circ", "°")
+        text = text.replace(r"\circ", "°")
+        
+        # 2. 수식 구분자($) 제거 (일반 텍스트로 표시하기 위함)
+        text = text.replace("$", "")
+        
+        # 3. 간혹 AI가 생성하는 잘못된 위첨자 표현 정리
+        text = text.replace("^", "")
+
     # 시작 지점 찾기
     first_q_pos = text.find("[Q")
     if first_q_pos != -1:
