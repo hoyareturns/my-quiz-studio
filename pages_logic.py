@@ -4,17 +4,46 @@ import time
 import streamlit.components.v1 as components
 from database import get_chats, save_chat, save_setting, get_all_quizzes, save_result
 
-# --- 🏆 구역별 최강자 로직 ---
+# --- 🏆 구역별 최강자 로직 (복구 완료!) ---
 def show_season_leaderboard(season_res, season_start):
-    st.subheader("🏆 구역별 최강자")
-    if not season_res: st.info("기록 없음")
+    st.subheader("구역별 최강자")
+    st.caption(f"이번 시즌 시작일: {season_start[:10]}")
+    if not season_res:
+        st.info("이번 시즌 기록이 없습니다.")
     else:
         df = pd.DataFrame(season_res)
-        st.markdown("### 🥇 우정 브레이커")
-        top1 = df.sort_values(by=['Score', 'Duration'], ascending=[False, True]).groupby('QuizTitle').first()
-        for idx, (u, c) in enumerate(top1['User'].value_counts().items()):
-            st.write(f"{idx+1}위: **{u}** ({c}회 1등)")
-
+        
+        # 1. 🥇 우정 브레이커 (1등 횟수)
+        st.markdown("###  우정 브레이커")
+        first_places = df.sort_values(by=['Score', 'Duration'], ascending=[False, True]).groupby('QuizTitle').first()
+        breaker_counts = first_places['User'].value_counts()
+        if not breaker_counts.empty:
+            for idx, (u, c) in enumerate(breaker_counts.items()):
+                st.write(f"{idx+1}위: **{u}** ({c}회 1등)")
+        else:
+            st.write("아직 1등 기록이 없습니다.")
+        
+        st.divider()
+        
+        # 2. 🎯 고인물 & 💀 동네북 (평균 점수, 2회 이상 참여자 기준)
+        user_stats = df.groupby('User').agg(AvgScore=('Score', 'mean'), Attempts=('Score', 'count'))
+        valid_u = user_stats[user_stats['Attempts'] >= 2]
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("###  고인물")
+            if not valid_u.empty:
+                for u, r in valid_u.sort_values('AvgScore', ascending=False).head(3).iterrows():
+                    st.write(f"**{u}** ({r['AvgScore']:.1f}점)")
+            else:
+                st.caption("2회 이상 참여자가 부족합니다.")
+        with c2:
+            st.markdown("###  동네북")
+            if not valid_u.empty:
+                for u, r in valid_u.sort_values('AvgScore', ascending=True).head(3).iterrows():
+                    st.write(f"**{u}** ({r['AvgScore']:.1f}점)")
+            else:
+                st.caption("2회 이상 참여자가 부족합니다.")
 # --- 💬 우정파괴채팅 로직 (명칭 변경 및 자동 점프 적용) ---
 def show_chat_room(player_name):
     # 📌 점프를 위한 상단 앵커

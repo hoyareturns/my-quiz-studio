@@ -1,0 +1,15 @@
+{
+    "name": "우정 파괴소",
+    "short_name": "우정파괴",
+    "start_url": "/",
+    "display": "standalone",  
+    "background_color": "#ffffff",
+    "theme_color": "#ff4b4b",
+    "icons": [
+      {
+        "src": "logo.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ]
+  }
