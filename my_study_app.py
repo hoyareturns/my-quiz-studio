@@ -52,7 +52,6 @@ with st.sidebar:
     if pw_input == ADMIN_PASSWORD:
         st.success("인증 완료")
         
-        # 📌 [수정됨] 요청하신 완벽한 프롬프트 반영
         st.info("🪄 **AI 출제 프롬프트 (복사해서 바로 사용)**")
         prompt_text = """아래 형식에 맞춰 [ ] 10문제를 출제해.
 인사말 쓰지 말고 [Q1]부터 출력해. 그림, 표, 그래프 등 텍스트로 표현할 수 없는 자료는 절대 포함하지 마.
@@ -123,9 +122,16 @@ st.session_state.player_name = st.text_input("👤 참가자 이름", value=st.s
 view_mode = st.radio("화면 전환", ["🎯 퀴즈 선택", "💬 우정파괴창"], horizontal=True, label_visibility="collapsed", index=["🎯 퀴즈 선택", "💬 우정파괴창"].index(app_settings.get('default_view', "🎯 퀴즈 선택")))
 
 if view_mode == "💬 우정파괴창":
-    st.subheader("💬 우정파괴창")
+    # 📌 [새로고침 기능 추가] 채팅창 상단에 새로고침 버튼 배치
+    c1, c2 = st.columns([3, 1])
+    c1.subheader("💬 우정파괴창")
+    if c2.button("🔄 새로고침", use_container_width=True):
+        get_chats.clear() # 구글 시트에서 최신 데이터를 다시 불러오도록 캐시 비우기
+        st.rerun()
+        
+    chat_container = st.container(height=400)
     for chat in get_chats():
-        st.markdown(f'<div class="chat-msg"><span class="chat-user">{chat["User"]}</span> <span class="chat-time">{chat["Time"][11:16]}</span><br>{chat["Message"]}</div>', unsafe_allow_html=True)
+        chat_container.markdown(f'<div class="chat-msg"><span class="chat-user">{chat["User"]}</span> <span class="chat-time">{chat["Time"][11:16]}</span><br>{chat["Message"]}</div>', unsafe_allow_html=True)
     with st.form("chat", clear_on_submit=True):
         m = st.text_input("메시지 입력", label_visibility="collapsed")
         if st.form_submit_button("전송", use_container_width=True) and m:
@@ -175,7 +181,6 @@ else:
                 is_ans = f"ans_{idx}" in st.session_state.user_answers
                 f_mode = app_settings.get('feedback_mode','⚡ 실시간 팩폭 (즉시 확인)')
                 
-                # 💡 [핵심 패치] 주관식/객관식 UI 분리 및 채점 (띄어쓰기 방어)
                 is_short_answer = (it['o'] == ["주관식"])
                 
                 if is_short_answer:
