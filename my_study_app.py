@@ -61,8 +61,12 @@ if 'player_name' not in st.session_state or not st.session_state.player_name:
 for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data']:
     if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
 
-# 시즌 초기화 시간 확인
 season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
+
+# 📌 [버그 수정] 화면 탭 설정값을 안전하게 불러오도록 로직 분리
+v_opts = ["퀴즈 선택", "우정파괴창", "구역별 최강자"]
+saved_view = app_settings.get('default_view', "퀴즈 선택")
+def_view_idx = v_opts.index(saved_view) if saved_view in v_opts else 0
 
 # --- 2. 사이드바 (출제 위원실) ---
 with st.sidebar:
@@ -95,7 +99,6 @@ with st.sidebar:
         all_cats = list(dict.fromkeys(custom_cats + [q.get('Category', '미분류') for q in all_q]))
         if not all_cats: all_cats = ["미분류"]
 
-        # 📌 [신규] 시즌제 리셋 기능
         if st.button("🔥 새 시즌 시작 (랭킹 초기화)", use_container_width=True, type="primary"):
             save_setting("season_start", get_kst_time())
             save_chat("💻 시스템", "🚨 새로운 시즌이 시작되었습니다! 모든 랭킹이 초기화됩니다.")
@@ -109,9 +112,9 @@ with st.sidebar:
         def_cat = st.selectbox("처음 열릴 카테고리", all_cats, index=all_cats.index(current_def) if current_def in all_cats else 0)
         if def_cat != current_def: save_setting("default_category", def_cat); st.rerun()
         
-        v_opts = ["퀴즈 선택", "우정파괴창", "구역별 최강자"]
-        def_view = st.selectbox("기본 시작 화면", v_opts, index=v_opts.index(app_settings.get('default_view', v_opts[0])) if app_settings.get('default_view') in v_opts else 0)
-        if def_view != app_settings.get('default_view'): save_setting("default_view", def_view); st.rerun()
+        # 📌 [버그 수정] 사이드바 드롭다운 안전하게 처리
+        def_view = st.selectbox("기본 시작 화면", v_opts, index=def_view_idx)
+        if def_view != saved_view: save_setting("default_view", def_view); st.rerun()
 
         with st.expander("그룹(카테고리) 추가"):
             new_g = st.text_input("새 그룹 이름")
@@ -139,11 +142,11 @@ with st.sidebar:
 
 # --- 3. 메인 화면 ---
 st.title("우정 파괴소")
-# 📌 세계관 반영: 수험번호
 st.session_state.player_name = st.text_input("수험번호 (자동발급/변경가능)", value=st.session_state.player_name)
-view_mode = st.radio("화면 전환", ["퀴즈 선택", "우정파괴창", "구역별 최강자"], horizontal=True, label_visibility="collapsed", index=["퀴즈 선택", "우정파괴창", "구역별 최강자"].index(app_settings.get('default_view', "퀴즈 선택") if app_settings.get('default_view') in ["퀴즈 선택", "우정파괴창", "구역별 최강자"] else 0))
 
-# 📌 데이터 필터링 (현재 시즌 기록만 가져오기)
+# 📌 [버그 수정] 안전하게 계산된 인덱스 변수 사용
+view_mode = st.radio("화면 전환", v_opts, horizontal=True, label_visibility="collapsed", index=def_view_idx)
+
 all_res = get_all_results()
 season_res = [r for r in all_res if r.get('Time', '') >= season_start]
 
@@ -159,7 +162,6 @@ if view_mode == "구역별 최강자":
     else:
         df = pd.DataFrame(season_res)
         
-        # 🥇 1. 우정 브레이커 (1위 탈환 횟수)
         st.markdown("### 🥇 우정 브레이커 (1위 횟수)")
         first_places = df.sort_values(by=['Score', 'Duration'], ascending=[False, True]).groupby('QuizTitle').first()
         breaker_counts = first_places['User'].value_counts()
@@ -170,10 +172,9 @@ if view_mode == "구역별 최강자":
         
         st.divider()
         user_stats = df.groupby('User').agg(AvgScore=('Score', 'mean'), Attempts=('Score', 'count'))
-        valid_users = user_stats[user_stats['Attempts'] >= 2] # 최소 2번 이상 푼 사람만
+        valid_users = user_stats[user_stats['Attempts'] >= 2] 
         
         col1, col2 = st.columns(2)
-        # 🎯 2. 고인물 (평균 정답률 Top)
         with col1:
             st.markdown("### 🎯 고인물")
             st.caption("최고 평균 점수 (2회 이상)")
@@ -183,7 +184,6 @@ if view_mode == "구역별 최강자":
                     st.write(f"{i+1}위: **{user}** ({row['AvgScore']:.1f}점)")
             else: st.caption("참여 부족")
             
-        # 💀 3. 불명예의 전당 (동네북)
         with col2:
             st.markdown("### 💀 동네북")
             st.caption("최저 평균 점수 (2회 이상)")
@@ -194,7 +194,6 @@ if view_mode == "구역별 최강자":
             else: st.caption("참여 부족")
         
         st.divider()
-        # 🔥 4. 연속 만점 (가장 많은 만점 횟수)
         st.markdown("### 🔥 만점 폭격기")
         st.caption("시즌 내 100점 달성 횟수")
         perfects = df[df['Score'] == 100].groupby('User').size().sort_values(ascending=False).head(3)
@@ -215,7 +214,6 @@ elif view_mode == "우정파괴창":
     chat_container = st.container(height=400)
     for chat in get_chats():
         chat_time_str = str(chat.get('Time', ''))[:16] 
-        # 시스템 메시지는 빨간색으로 특별 취급
         if chat["User"] == "💻 시스템":
             chat_container.markdown(f'<div class="chat-msg" style="border: 1px solid #ff4b4b;"><span class="chat-sys">{chat["User"]}:</span>{chat["Message"]}<span class="chat-time">{chat_time_str}</span></div>', unsafe_allow_html=True)
         else:
@@ -252,10 +250,8 @@ else:
         st.subheader(f"{st.session_state.selected_quiz}")
         q_item = next(q for q in quiz_data if q['Title'] == st.session_state.selected_quiz)
         
-        # 📌 해당 퀴즈의 시즌 결과 필터링
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
         
-        # 📌 [신규] 1등 정보 계산 및 도발 메시지 출력
         current_1st_user = None
         current_best_score = -1
         current_best_time = 9999
@@ -266,12 +262,10 @@ else:
             current_best_score = sorted_res[0]['Score']
             current_best_time = sorted_res[0]['Duration']
             
-            # 도발 메시지가 있으면 출력
             taunt_msg = app_settings.get(f"taunt_{q_item['Title']}", "")
             if taunt_msg:
                 st.markdown(f'<div class="taunt-box">"{taunt_msg}"<div class="taunt-author">- 현재 1등 {current_1st_user} -</div></div>', unsafe_allow_html=True)
             
-            # 내가 1등이면 도발 메시지 작성 폼 표시
             if current_1st_user == st.session_state.player_name:
                 with st.expander("👑 1등의 특권: 도발 메시지 남기기", expanded=False):
                     new_taunt = st.text_input("친구들을 도발해보세요!", value=taunt_msg, placeholder="ㅋㅋ 아직도 안 풀었냐?")
@@ -332,17 +326,15 @@ else:
                 score = ((len(parsed)-len(wrongs))/len(parsed))*100
                 duration = time.time()-st.session_state.start_time
                 
-                # DB 저장
                 save_result(q_item['Title'], st.session_state.player_name, score, duration, wrongs)
                 
-                # 📌 [신규] 시스템 알림 로직 (만점 및 1등 탈환)
                 if score == 100:
                     save_chat("💻 시스템", f"🎉 [{st.session_state.player_name}]님이 '{q_item['Title']}'에서 만점을 달성했습니다!")
                 
-                if q_res: # 기존 기록이 있을 때만 1등 비교
+                if q_res: 
                     if score > current_best_score or (score == current_best_score and duration < current_best_time):
                         save_chat("💻 시스템", f"🚨 [{st.session_state.player_name}]님이 '{q_item['Title']}'의 새로운 1등으로 등극했습니다!")
-                else: # 첫 도전자일 경우
+                else: 
                     save_chat("💻 시스템", f"🚀 [{st.session_state.player_name}]님이 '{q_item['Title']}'의 첫 번째 지배자가 되었습니다!")
 
                 st.session_state.quiz_finished = True; st.session_state.last_score = score; st.session_state.review_data = revs; st.rerun()
