@@ -49,16 +49,31 @@ def show_chat_room(player_name):
         if st.form_submit_button("전송", use_container_width=True) and m:
             save_chat(player_name, m); st.rerun()
 
-# --- 🎯 퀴즈 선택 및 풀이 로직 (위치 최적화 버전) ---
+# --- 🎯 퀴즈 선택 및 풀이 로직 (기본 카테고리 연동 추가) ---
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
+    # 1. 카테고리 목록 구성
     all_cats = list(dict.fromkeys([q.get('Category','미분류') for q in quizzes]))
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
     all_display_cats = list(dict.fromkeys(custom_cats + all_cats))
     
+    # 📌 [핵심 수정] 관리자가 설정한 '기본 시작 카테고리'의 인덱스 찾기
+    default_cat = app_settings.get('default_category', all_display_cats[0] if all_display_cats else "")
+    try:
+        start_idx = all_display_cats.index(default_cat)
+    except (ValueError, IndexError):
+        start_idx = 0 # 설정값이 목록에 없으면 첫 번째 탭
+
+    # 📌 [핵심 수정] 탭 생성 시 인덱스(default_active_tab)를 지정할 수 없으므로 
+    # Streamlit의 최신 기능을 활용하거나, 순서를 조정하여 첫 번째로 배치합니다.
+    # 여기서는 '설정된 카테고리'가 가장 먼저 나오도록 목록 순서를 재배열하는 방식을 사용합니다.
+    if default_cat in all_display_cats:
+        all_display_cats.remove(default_cat)
+        all_display_cats.insert(0, default_cat)
+
     tabs = st.tabs(all_display_cats)
     for i, cat in enumerate(all_display_cats):
         with tabs[i]:
-            # 📌 퀴즈 목록 출력
+            # 퀴즈 목록 출력
             cat_qs = sorted([q for q in quizzes if q.get('Category') == cat], key=lambda x: x['Title'])
             if not cat_qs: 
                 st.caption("등록된 퀴즈 없음")
@@ -73,12 +88,9 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.start_time = None
                         st.rerun()
 
-            # 📌 [핵심 수정] 선택한 퀴즈가 현재 탭(Category)에 속해 있다면, 탭 내부 바로 아래에 상세 정보 출력
+            # 선택한 퀴즈가 현재 탭에 속해 있다면 상세 정보 출력
             if st.session_state.selected_quiz:
-                # 현재 선택된 퀴즈 객체 찾기
                 selected_q_item = next((q for q in quizzes if q['Title'] == st.session_state.selected_quiz), None)
-                
-                # 선택된 퀴즈의 카테고리가 현재 탭의 카테고리와 일치할 때만 여기에 그림
                 if selected_q_item and selected_q_item.get('Category') == cat:
                     render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
 
