@@ -14,22 +14,43 @@ from utils import robust_parse
 def get_kst_time():
     return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
 
-# --- 0. 페이지 설정 및 디자인 ---
-st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
+# --- 0. 페이지 설정 및 디자인 (이모지 제거, 모바일 촘촘한 레이아웃 적용) ---
+st.set_page_config(page_title="우정 파괴소", layout="centered")
 st.markdown("""
 <style>
+/* 지문/수식 렌더링 박스 */
 [data-testid="stMain"] blockquote {
     background-color: var(--secondary-background-color) !important; 
     border: 1px solid var(--border-color) !important;
-    border-left: 5px solid var(--primary-color) !important; 
-    padding: 20px !important; border-radius: 8px !important; 
+    border-left: 4px solid var(--primary-color) !important; 
+    padding: 16px !important; border-radius: 6px !important; 
     color: var(--text-color) !important; font-style: normal !important;
 }
-.question-header { font-size: 18px; font-weight: 800; color: #ff4b4b; margin-top: 30px; }
-.chat-msg { padding: 10px; border-radius: 10px; margin-bottom: 10px; background-color: var(--secondary-background-color); color: var(--text-color); }
-.chat-user { font-weight: bold; color: var(--primary-color); font-size: 14px; margin-right: 5px; }
-.chat-time { font-size: 11px; opacity: 0.6; float: right; margin-left: 10px; }
-@media (max-width: 768px) { [data-testid="stTabs"] [data-testid="column"] { flex: 1 1 45% !important; } }
+.question-header { font-size: 16px; font-weight: 700; color: #ff4b4b; margin-top: 24px; margin-bottom: 8px; }
+
+/* 채팅창 스타일 */
+.chat-msg { padding: 10px; border-radius: 8px; margin-bottom: 8px; background-color: var(--secondary-background-color); color: var(--text-color); }
+.chat-user { font-weight: 600; color: var(--primary-color); font-size: 13px; margin-right: 5px; }
+.chat-time { font-size: 11px; opacity: 0.5; float: right; margin-left: 10px; }
+
+/* 📱 모바일 최적화: 버튼 및 여백 촘촘하게 만들기 */
+.stButton > button {
+    padding: 0.3rem 0.5rem !important; /* 버튼 위아래 여백 축소 */
+    min-height: 2.2rem !important; /* 버튼 최소 높이 축소 */
+    border-radius: 6px !important; /* 모서리를 약간 덜 둥글게 (모던함) */
+    font-size: 14px !important;
+}
+[data-testid="column"] {
+    padding: 0 4px !important; /* 좌우 컬럼(버튼 사이) 간격 축소 */
+}
+div[data-testid="stVerticalBlock"] > div {
+    padding-bottom: 0.2rem !important; /* 세로 요소들 사이의 틈새 축소 */
+}
+/* 모바일에서 2열 강제 유지 */
+@media (max-width: 768px) { 
+    [data-testid="stTabs"] [data-testid="column"] { flex: 1 1 calc(50% - 8px) !important; min-width: calc(45%) !important; } 
+    h1 { font-size: 1.8rem !important; } /* 모바일 제목 크기 조정 */
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -47,9 +68,18 @@ if 'player_name' not in st.session_state or not st.session_state.player_name:
 for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data']:
     if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
 
+# --- 기존 이모지 설정값 호환성 처리 ---
+saved_view = app_settings.get('default_view', "퀴즈 선택")
+if "우정파괴창" in saved_view: saved_view = "우정파괴창"
+else: saved_view = "퀴즈 선택"
+
+saved_mode = app_settings.get('feedback_mode', "실시간 팩폭 (즉시 확인)")
+if "실시간" in saved_mode: saved_mode = "실시간 팩폭 (즉시 확인)"
+else: saved_mode = "최후의 심판 (마지막에 한 번에)"
+
 # --- 2. 사이드바 (관리자) ---
 with st.sidebar:
-    admin_btn_name = app_settings.get("admin_btn_name", "⚙️ 관리자 설정")
+    admin_btn_name = app_settings.get("admin_btn_name", "관리자 설정")
     st.subheader(admin_btn_name)
     
     pw_input = st.text_input("비밀번호", type="password", placeholder="Password", label_visibility="collapsed")
@@ -57,7 +87,7 @@ with st.sidebar:
     if pw_input == ADMIN_PASSWORD:
         st.success("인증 완료")
         
-        st.info("🪄 **AI 출제 프롬프트 (복사해서 바로 사용)**")
+        st.info("AI 출제 프롬프트 (복사해서 바로 사용)")
         prompt_text = """아래 형식에 맞춰 [ ] 10문제를 출제해.
 인사말 쓰지 말고 [Q1]부터 출력해. 그림, 표, 그래프 등 텍스트로 표현할 수 없는 자료는 절대 포함하지 마.
 
@@ -75,7 +105,7 @@ with st.sidebar:
         st.code(prompt_text, language="text")
         
         wp_data = get_weak_points()
-        st.caption(f"💡 전체 취약 주제 참고: {wp_data}")
+        st.caption(f"전체 취약 주제 참고: {wp_data}")
         st.divider()
         
         all_q = get_all_quizzes()
@@ -87,56 +117,61 @@ with st.sidebar:
         if new_admin_name != admin_btn_name: save_setting("admin_btn_name", new_admin_name); st.rerun()
 
         current_def = app_settings.get('default_category', all_cats[0])
-        def_cat = st.selectbox("📌 처음 열릴 카테고리 설정", all_cats, index=all_cats.index(current_def) if current_def in all_cats else 0)
+        def_cat = st.selectbox("처음 열릴 카테고리 설정", all_cats, index=all_cats.index(current_def) if current_def in all_cats else 0)
         if def_cat != current_def: save_setting("default_category", def_cat); st.rerun()
         
-        v_opts = ["🎯 퀴즈 선택", "💬 우정파괴창"]
-        def_view = st.selectbox("기본 시작 화면", v_opts, index=v_opts.index(app_settings.get('default_view', v_opts[0])))
-        if def_view != app_settings.get('default_view'): save_setting("default_view", def_view); st.rerun()
+        v_opts = ["퀴즈 선택", "우정파괴창"]
+        def_view = st.selectbox("기본 시작 화면", v_opts, index=v_opts.index(saved_view))
+        if def_view != saved_view: save_setting("default_view", def_view); st.rerun()
 
-        with st.expander("➕ 그룹(카테고리) 추가"):
+        mode_opts = ["실시간 팩폭 (즉시 확인)", "최후의 심판 (마지막에 한 번에)"]
+        sel_mode = st.selectbox("채점 방식", mode_opts, index=mode_opts.index(saved_mode))
+        if sel_mode != saved_mode: save_setting("feedback_mode", sel_mode); st.rerun()
+
+        with st.expander("그룹(카테고리) 추가"):
             new_g = st.text_input("새 그룹 이름")
             if st.button("추가") and new_g:
                 save_setting("custom_categories", app_settings.get("custom_categories","") + f",{new_g}"); st.rerun()
 
-        with st.expander("🆕 새 퀴즈 배포"):
+        with st.expander("새 퀴즈 배포"):
             nc = st.selectbox("소속 카테고리 선택", all_cats)
             nt = st.text_input("퀴즈 제목")
             nx = st.text_area("AI 결과물 붙여넣기", height=150)
-            if st.button("🚀 배포", use_container_width=True):
+            if st.button("배포", use_container_width=True):
                 if nc and nt and nx:
                     from database import get_worksheet
                     ws_q = get_worksheet("Quizzes")
                     if ws_q: ws_q.append_row([nc, nt, nx, get_kst_time()]); get_all_quizzes.clear(); st.success("배포 성공!"); st.rerun()
 
-        with st.expander("✏️ 퀴즈 수정/삭제"):
+        with st.expander("퀴즈 수정/삭제"):
             if all_q:
                 sel_q_tit = st.selectbox("관리할 퀴즈", [q['Title'] for q in all_q])
                 curr_q = next(q for q in all_q if q['Title'] == sel_q_tit)
                 e_cat = st.selectbox("그룹 변경", all_cats, index=all_cats.index(curr_q['Category']) if curr_q['Category'] in all_cats else 0)
                 e_tit = st.text_input("제목 변경", curr_q['Title'])
-                if st.button("💾 정보 수정"): update_quiz(sel_q_tit, e_cat, e_tit); st.rerun()
-                if st.button("🗑️ 퀴즈 삭제"): delete_quiz(sel_q_tit); st.rerun()
+                if st.button("정보 수정"): update_quiz(sel_q_tit, e_cat, e_tit); st.rerun()
+                if st.button("퀴즈 삭제"): delete_quiz(sel_q_tit); st.rerun()
 
     qr = qrcode.QRCode(box_size=3); qr.add_data(APP_URL); buf = BytesIO()
     qr.make_image().save(buf); st.image(buf.getvalue(), width=100)
 
 # --- 3. 메인 화면 ---
-st.title("🧪 우정 파괴소")
-st.session_state.player_name = st.text_input("👤 참가자 이름", value=st.session_state.player_name)
-view_mode = st.radio("화면 전환", ["🎯 퀴즈 선택", "💬 우정파괴창"], horizontal=True, label_visibility="collapsed", index=["🎯 퀴즈 선택", "💬 우정파괴창"].index(app_settings.get('default_view', "🎯 퀴즈 선택")))
+st.title("우정 파괴소")
+st.session_state.player_name = st.text_input("참가자 이름", value=st.session_state.player_name)
 
-if view_mode == "💬 우정파괴창":
+# 탭 스타일 라디오 버튼 (이모지 제거)
+view_mode = st.radio("화면 전환", ["퀴즈 선택", "우정파괴창"], horizontal=True, label_visibility="collapsed", index=["퀴즈 선택", "우정파괴창"].index(saved_view))
+
+if view_mode == "우정파괴창":
     c1, c2 = st.columns([3, 1])
-    c1.subheader("💬 우정파괴창")
-    if c2.button("🔄 새로고침", use_container_width=True):
+    c1.subheader("우정파괴창")
+    if c2.button("새로고침", use_container_width=True):
         get_chats.clear()
         st.rerun()
         
     chat_container = st.container(height=400)
     for chat in get_chats():
         chat_time_str = str(chat.get('Time', ''))[:16] 
-        # 📌 [UI 수정] 줄바꿈(<br>)을 삭제하고 콜론(:)을 붙여 한 줄로 출력되도록 변경
         chat_container.markdown(f'<div class="chat-msg"><span class="chat-user">{chat["User"]}:</span>{chat["Message"]}<span class="chat-time">{chat_time_str}</span></div>', unsafe_allow_html=True)
         
     with st.form("chat", clear_on_submit=True):
@@ -159,20 +194,21 @@ else:
             else:
                 cols = st.columns(2)
                 for j, q in enumerate(cat_qs):
+                    # 이모지(🔥) 제거하고 텍스트만 깔끔하게 출력
                     if cols[j%2].button(q['Title'], use_container_width=True, key=f"q_{cat}_{j}"):
                         st.session_state.selected_quiz = q['Title']; st.session_state.quiz_finished = False; st.rerun()
 
     if st.session_state.selected_quiz:
         st.divider()
-        st.subheader(f"📖 {st.session_state.selected_quiz}")
+        st.subheader(f"{st.session_state.selected_quiz}")
         q_item = next(q for q in quiz_data if q['Title'] == st.session_state.selected_quiz)
         
-        with st.expander("🏆 실시간 랭킹 확인", expanded=False):
+        with st.expander("실시간 랭킹 확인", expanded=False):
             res = [r for r in get_all_results() if r.get('QuizTitle') == q_item['Title']]
             if res: st.dataframe(pd.DataFrame(res).sort_values(by=['Score','Duration'], ascending=[False,True]), use_container_width=True)
             
         if st.session_state.start_time is None and not st.session_state.quiz_finished:
-            if st.button("🚀 퀴즈 시작하기!", use_container_width=True, type="primary"):
+            if st.button("퀴즈 시작하기", use_container_width=True, type="primary"):
                 st.session_state.start_time = time.time(); st.rerun()
         
         elif not st.session_state.quiz_finished:
@@ -186,29 +222,28 @@ else:
                 else: st.markdown("\n".join([f"> {l}" for l in it['q'].strip().split('\n')]))
                 
                 is_ans = f"ans_{idx}" in st.session_state.user_answers
-                f_mode = app_settings.get('feedback_mode','⚡ 실시간 팩폭 (즉시 확인)')
                 
                 is_short_answer = (it['o'] == ["주관식"])
                 
                 if is_short_answer:
-                    ans = st.text_input(f"정답 입력_{idx}", key=f"r_{idx}", disabled=is_ans if f_mode.startswith("⚡") else False, placeholder="여기에 정답을 입력하세요")
+                    ans = st.text_input(f"정답 입력_{idx}", key=f"r_{idx}", disabled=is_ans if saved_mode == "실시간 팩폭 (즉시 확인)" else False, placeholder="정답을 입력하세요")
                     correct_ans = str(it['a'])
                 else:
-                    ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"r_{idx}", disabled=is_ans if f_mode.startswith("⚡") else False, label_visibility="collapsed")
+                    ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"r_{idx}", disabled=is_ans if saved_mode == "실시간 팩폭 (즉시 확인)" else False, label_visibility="collapsed")
                     correct_ans = it['o'][it['a']]
                 
                 if ans:
                     st.session_state.user_answers[f"ans_{idx}"] = ans
-                    if f_mode.startswith("⚡"):
+                    if saved_mode == "실시간 팩폭 (즉시 확인)":
                         if is_short_answer:
                             is_correct = (ans.replace(" ", "").lower() == correct_ans.replace(" ", "").lower())
                         else:
                             is_correct = (ans == correct_ans)
                             
-                        if is_correct: st.success("⭕ 정답!")
-                        else: st.error(f"❌ 오답! (정답: {correct_ans})")
+                        if is_correct: st.success("정답입니다!")
+                        else: st.error(f"오답! (정답: {correct_ans})")
             
-            if st.button("🏁 답안 제출 (미응답 시 오답)", use_container_width=True):
+            if st.button("답안 제출 (미응답 시 오답)", use_container_width=True):
                 wrongs, revs = [], []
                 for k, it in enumerate(parsed):
                     u = st.session_state.user_answers.get(f"ans_{k}")
@@ -230,12 +265,12 @@ else:
                 st.session_state.quiz_finished = True; st.session_state.last_score = score; st.session_state.review_data = revs; st.rerun()
 
         if st.session_state.quiz_finished:
-            if app_settings.get('feedback_mode','').startswith("🏁"):
-                with st.expander("📝 전체 채점 결과 보기", expanded=True):
+            if saved_mode != "실시간 팩폭 (즉시 확인)":
+                with st.expander("전체 채점 결과 보기", expanded=True):
                     for i, r in enumerate(st.session_state.review_data):
                         if r.get('is_u'):
-                            st.markdown(f"**Q{i+1}.** ❌ 미응답"); st.write("⚠️ 정답 미제공")
+                            st.markdown(f"**Q{i+1}.** 미응답"); st.caption("정답 미제공")
                         else:
-                            st.markdown(f"**Q{i+1}.** {'⭕ 정답' if r['is_c'] else '❌ 오답'}")
+                            st.markdown(f"**Q{i+1}.** {'정답' if r['is_c'] else '오답'}")
                             if not r['is_c']: st.write(f"내 답: {r['u']} / 정답: **{r['c']}**")
-            st.success(f"🎉 종료! 최종 점수: {int(st.session_state.last_score)}점"); st.button("다른 퀴즈 하러 가기", on_click=lambda: st.rerun(), use_container_width=True)
+            st.success(f"수고하셨습니다! 최종 점수: {int(st.session_state.last_score)}점"); st.button("다른 퀴즈 하러 가기", on_click=lambda: st.rerun(), use_container_width=True)
