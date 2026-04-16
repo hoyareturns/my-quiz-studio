@@ -4,13 +4,12 @@ import time
 import qrcode
 import re
 from io import BytesIO
-# 분리된 파일에서 함수 불러오기
 from database import (get_all_quizzes, get_all_results, get_settings, save_setting, 
                       get_chats, save_chat, get_weak_points, update_quiz, delete_quiz, 
                       save_result)
 from utils import robust_parse
 
-# --- 0. 페이지 설정 및 디자인 ---
+# --- 0. 페이지 설정 ---
 st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
 st.markdown("""
 <style>
@@ -29,7 +28,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 1. 초기 설정 및 세션 ---
+# --- 1. 초기 설정 ---
 APP_URL = "https://hoya-quiz-studio.streamlit.app"
 ADMIN_PASSWORD = "1234"
 app_settings = get_settings()
@@ -43,7 +42,7 @@ if 'player_name' not in st.session_state or not st.session_state.player_name:
 for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data']:
     if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
 
-# --- 2. 사이드바 (관리자) ---
+# --- 2. 사이드바 ---
 with st.sidebar:
     st.subheader("⚙️ 관리자 설정")
     pw_input = st.text_input("비밀번호", type="password", placeholder="Password", label_visibility="collapsed")
@@ -51,35 +50,31 @@ with st.sidebar:
     if pw_input == ADMIN_PASSWORD:
         st.success("인증 완료")
         
-        # 📌 [수정됨] 프롬프트 고도화 및 wp_data 분리
-        st.info("🪄 **AI 출제 프롬프트 (복사해서 바로 사용하세요)**")
-        prompt_text = """아래 지정된 형식에 맞춰서 [과목/주제 입력] 객관식 10문제를 출제해 줘.
-인사말이나 부가 설명은 절대 쓰지 말고, 오직 [Q1]부터 결과만 출력해.
-★중요: 그림, 표, 그래프 등 텍스트로 표현할 수 없는 자료는 지문에 절대 포함하지 마.
+        st.info("🪄 **AI 출제 프롬프트 (주관식/객관식 혼합 가능)**")
+        prompt_text = """아래 형식에 맞춰 [ ] 10문제를 출제해.
+인사말 쓰지 말고 [Q1]부터 출력해. 그림/표는 제외.
 
-[Q]
-<지문>
-여기에 소설, 영어 본문, 수학 수식 등을 입력 (줄바꿈 가능)
-※ 수식이 들어갈 경우 반드시 양 끝에 $ 기호를 붙여줘 (예: $x^2+y^2=1$)
-※ 지문이 필요 없는 문제면 <지문> 태그를 생략해도 됨
-</지문>
-문제 내용(발문) 입력
-
-[O] ① 보기1내용 ② 보기2내용 ③ 보기3내용 ④ 보기4내용 ⑤ 보기5내용
+[객관식 포맷]
+[Q] <지문>내용</지문> 발문
+[O] ① 보기1 ② 보기2 ③ 보기3 ④ 보기4 ⑤ 보기5
 [A] 정답 기호(예: ②)
-[K] 핵심 키워드 (오답 분석용)"""
+[K] 키워드
+
+[주관식 포맷]
+[Q] <지문>내용</지문> 발문
+[O] 주관식
+[A] 단답형 정답 (예: 아몬드)
+[K] 키워드"""
         st.code(prompt_text, language="text")
         
-        # wp_data는 프롬프트에 넣지 않고 하단에 참고용으로만 표시합니다.
         wp_data = get_weak_points()
-        st.caption(f"💡 참고용 전체 취약 주제: {wp_data}")
+        st.caption(f"💡 참고용 취약 주제: {wp_data}")
         st.divider()
         
         all_q = get_all_quizzes()
         custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
         all_cats = list(dict.fromkeys(custom_cats + [q.get('Category', '미분류') for q in all_q]))
         
-        # 설정 변경
         def_cat = st.selectbox("📌 처음 카테고리", all_cats, index=all_cats.index(app_settings.get('default_category', all_cats[0])) if app_settings.get('default_category') in all_cats else 0)
         if def_cat != app_settings.get('default_category'): save_setting("default_category", def_cat); st.rerun()
         
@@ -97,7 +92,7 @@ with st.sidebar:
             if st.button("추가") and new_g: save_setting("custom_categories", app_settings.get("custom_categories","") + f",{new_g}"); st.rerun()
 
         with st.expander("🆕 새 퀴즈 배포"):
-            nc = st.text_input("카테고리 (자동 분류됨)"); nt = st.text_input("퀴즈 제목"); nx = st.text_area("AI 결과물 붙여넣기", height=150)
+            nc = st.text_input("카테고리"); nt = st.text_input("퀴즈 제목"); nx = st.text_area("AI 결과물", height=150)
             if st.button("🚀 배포", use_container_width=True):
                 if nc and nt and nx:
                     from database import get_worksheet
@@ -167,23 +162,40 @@ else:
                     if len(p[1].split("</지문>")) > 1: st.markdown(p[1].split("</지문>")[1])
                 else: st.markdown("\n".join([f"> {l}" for l in it['q'].strip().split('\n')]))
                 
-                is_ans = f"ans_{idx}" in st.session_state.user_answers
+                is_subj = len(it['o']) == 0 # 주관식 여부 판단
                 f_mode = app_settings.get('feedback_mode','⚡ 실시간 팩폭 (즉시 확인)')
-                ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"r_{idx}", disabled=is_ans if f_mode.startswith("⚡") else False, label_visibility="collapsed")
+                is_disabled = (f"ans_{idx}" in st.session_state.user_answers) if f_mode.startswith("⚡") else False
+                
+                # 주관식 vs 객관식 입력창 분기
+                if is_subj:
+                    ans = st.text_input(f"답안 입력", key=f"t_{idx}", disabled=is_disabled, placeholder="정답을 입력하세요")
+                else:
+                    ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"r_{idx}", disabled=is_disabled, label_visibility="collapsed")
                 
                 if ans:
                     st.session_state.user_answers[f"ans_{idx}"] = ans
                     if f_mode.startswith("⚡"):
-                        if ans == it['o'][it['a']]: st.success("⭕ 정답!")
-                        else: st.error(f"❌ 오답! (정답: {it['o'][it['a']]})")
+                        if is_subj:
+                            # 주관식 채점: 띄어쓰기 무시, 대소문자 무시
+                            is_correct = ans.replace(" ", "").lower() == str(it['a']).replace(" ", "").lower()
+                        else:
+                            is_correct = (ans == it['o'][it['a']])
+                            
+                        if is_correct: st.success("⭕ 정답!")
+                        else: st.error(f"❌ 오답! (정답: {it['a'] if is_subj else it['o'][it['a']]})")
             
             if st.button("🏁 제출 (미응답 시 오답)"):
                 wrongs, revs = [], []
                 for k, it in enumerate(parsed):
-                    u = st.session_state.user_answers.get(f"ans_{k}"); c = it['o'][it['a']]
+                    u = st.session_state.user_answers.get(f"ans_{k}")
+                    is_subj = len(it['o']) == 0
+                    c = str(it['a']) if is_subj else it['o'][it['a']]
+                    
                     if not u: wrongs.append(it['k']); revs.append({"q":it['q'], "is_u":True})
                     else:
-                        is_c = (u == c)
+                        if is_subj: is_c = str(u).replace(" ", "").lower() == c.replace(" ", "").lower()
+                        else: is_c = (u == c)
+                        
                         if not is_c: wrongs.append(it['k'])
                         revs.append({"q":it['q'], "u":u, "c":c, "is_c":is_c, "is_u":False})
                 score = ((len(parsed)-len(wrongs))/len(parsed))*100
@@ -192,7 +204,7 @@ else:
 
         if st.session_state.quiz_finished:
             if app_settings.get('feedback_mode','').startswith("🏁"):
-                with st.expander("📝 채점 결과"):
+                with st.expander("📝 채점 결과", expanded=True):
                     for i, r in enumerate(st.session_state.review_data):
                         if r.get('is_u'):
                             st.markdown(f"**Q{i+1}.** ❌ 미응답"); st.write("⚠️ 정답 미제공")
