@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
+from datetime import datetime, timedelta
 import qrcode
 import re
 from io import BytesIO
@@ -8,6 +9,10 @@ from database import (get_all_quizzes, get_all_results, get_settings, save_setti
                       get_chats, save_chat, get_weak_points, update_quiz, delete_quiz, 
                       save_result)
 from utils import robust_parse
+
+# 💡 [핵심 패치] 한국 표준시(KST) 계산 함수
+def get_kst_time():
+    return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
 
 # --- 0. 페이지 설정 및 디자인 ---
 st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
@@ -23,7 +28,8 @@ st.markdown("""
 .question-header { font-size: 18px; font-weight: 800; color: #ff4b4b; margin-top: 30px; }
 .chat-msg { padding: 10px; border-radius: 10px; margin-bottom: 10px; background-color: var(--secondary-background-color); color: var(--text-color); }
 .chat-user { font-weight: bold; color: var(--primary-color); font-size: 14px; }
-.chat-time { font-size: 11px; opacity: 0.6; float: right; }
+/* 날짜와 시간이 모두 보이도록 너비 조정 */
+.chat-time { font-size: 11px; opacity: 0.6; float: right; margin-left: 10px; }
 @media (max-width: 768px) { [data-testid="stTabs"] [data-testid="column"] { flex: 1 1 45% !important; } }
 </style>
 """, unsafe_allow_html=True)
@@ -102,7 +108,8 @@ with st.sidebar:
                 if nc and nt and nx:
                     from database import get_worksheet
                     ws_q = get_worksheet("Quizzes")
-                    if ws_q: ws_q.append_row([nc, nt, nx, time.strftime('%Y-%m-%d %H:%M:%S')]); get_all_quizzes.clear(); st.success("배포 성공!"); st.rerun()
+                    # 한국 시간으로 퀴즈 배포 시간 기록
+                    if ws_q: ws_q.append_row([nc, nt, nx, get_kst_time()]); get_all_quizzes.clear(); st.success("배포 성공!"); st.rerun()
 
         with st.expander("✏️ 퀴즈 수정/삭제"):
             if all_q:
@@ -122,16 +129,18 @@ st.session_state.player_name = st.text_input("👤 참가자 이름", value=st.s
 view_mode = st.radio("화면 전환", ["🎯 퀴즈 선택", "💬 우정파괴창"], horizontal=True, label_visibility="collapsed", index=["🎯 퀴즈 선택", "💬 우정파괴창"].index(app_settings.get('default_view', "🎯 퀴즈 선택")))
 
 if view_mode == "💬 우정파괴창":
-    # 📌 [새로고침 기능 추가] 채팅창 상단에 새로고침 버튼 배치
     c1, c2 = st.columns([3, 1])
     c1.subheader("💬 우정파괴창")
     if c2.button("🔄 새로고침", use_container_width=True):
-        get_chats.clear() # 구글 시트에서 최신 데이터를 다시 불러오도록 캐시 비우기
+        get_chats.clear()
         st.rerun()
         
     chat_container = st.container(height=400)
     for chat in get_chats():
-        chat_container.markdown(f'<div class="chat-msg"><span class="chat-user">{chat["User"]}</span> <span class="chat-time">{chat["Time"][11:16]}</span><br>{chat["Message"]}</div>', unsafe_allow_html=True)
+        # 📌 [시간 표기 개선] '2026-04-16 09:59:46' 문자열 중 앞 16자리(분 단위까지)를 잘라서 날짜와 시간 모두 표기
+        chat_time_str = str(chat.get('Time', ''))[:16] 
+        chat_container.markdown(f'<div class="chat-msg"><span class="chat-user">{chat["User"]}</span> <span class="chat-time">{chat_time_str}</span><br>{chat["Message"]}</div>', unsafe_allow_html=True)
+        
     with st.form("chat", clear_on_submit=True):
         m = st.text_input("메시지 입력", label_visibility="collapsed")
         if st.form_submit_button("전송", use_container_width=True) and m:

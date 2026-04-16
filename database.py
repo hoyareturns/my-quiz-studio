@@ -1,9 +1,13 @@
 import streamlit as st
 import gspread
 import json
-import time
+from datetime import datetime, timedelta
 from collections import Counter
 import re
+
+# 💡 [핵심 패치] 한국 표준시(KST) 계산 함수
+def get_kst_time():
+    return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
 
 @st.cache_resource
 def get_gspread_client():
@@ -55,7 +59,8 @@ def get_chats():
 
 def save_chat(user, message):
     ws = get_worksheet("Chat")
-    if ws: ws.append_row([time.strftime('%Y-%m-%d %H:%M:%S'), user, message])
+    # 한국 시간으로 저장
+    if ws: ws.append_row([get_kst_time(), user, message])
     get_chats.clear()
 
 @st.cache_data(ttl=30)
@@ -86,8 +91,9 @@ def delete_quiz(title):
 
 def save_result(title, user, score, duration, wrongs):
     res_ws = get_worksheet("Results")
-    if res_ws: res_ws.append_row([title, user, score, round(duration, 2), time.strftime('%Y-%m-%d %H:%M:%S')])
+    # 한국 시간으로 저장
+    if res_ws: res_ws.append_row([title, user, score, round(duration, 2), get_kst_time()])
     if wrongs:
         wr_ws = get_worksheet("WrongAnswers")
-        if wr_ws: [wr_ws.append_row([user, k, time.strftime('%Y-%m-%d %H:%M:%S')]) for k in wrongs]
+        if wr_ws: [wr_ws.append_row([user, k, get_kst_time()]) for k in wrongs]
     get_all_results.clear()
