@@ -7,10 +7,10 @@ from io import BytesIO
 # 분리된 파일에서 함수 불러오기
 from database import (get_all_quizzes, get_all_results, get_settings, save_setting, 
                       get_chats, save_chat, get_weak_points, update_quiz, delete_quiz, 
-                      save_result, get_worksheet)
+                      save_result)
 from utils import robust_parse
 
-# --- 디자인 설정 ---
+# --- 0. 페이지 설정 및 디자인 ---
 st.set_page_config(page_title="우정 파괴소", page_icon="🧪", layout="centered")
 st.markdown("""
 <style>
@@ -29,7 +29,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 초기 설정 및 세션 ---
+# --- 1. 초기 설정 및 세션 ---
 APP_URL = "https://hoya-quiz-studio.streamlit.app"
 ADMIN_PASSWORD = "1234"
 app_settings = get_settings()
@@ -43,15 +43,37 @@ if 'player_name' not in st.session_state or not st.session_state.player_name:
 for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data']:
     if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
 
-# --- 사이드바 (관리자) ---
+# --- 2. 사이드바 (관리자) ---
 with st.sidebar:
     st.subheader("⚙️ 관리자 설정")
     pw_input = st.text_input("비밀번호", type="password", placeholder="Password", label_visibility="collapsed")
+    
     if pw_input == ADMIN_PASSWORD:
         st.success("인증 완료")
-        wp = get_weak_points()
-        st.info("🪄 AI 출제 프롬프트 가이드")
-        st.code(f"과목 문제 10개 출제. 주제({wp}) 반영. 인사말 없이 [Q1]부터. 그림/표 금지.", language="text")
+        
+        # 📌 [수정됨] 프롬프트 고도화 및 wp_data 분리
+        st.info("🪄 **AI 출제 프롬프트 (복사해서 바로 사용하세요)**")
+        prompt_text = """아래 지정된 형식에 맞춰서 [과목/주제 입력] 객관식 10문제를 출제해 줘.
+인사말이나 부가 설명은 절대 쓰지 말고, 오직 [Q1]부터 결과만 출력해.
+★중요: 그림, 표, 그래프 등 텍스트로 표현할 수 없는 자료는 지문에 절대 포함하지 마.
+
+[Q]
+<지문>
+여기에 소설, 영어 본문, 수학 수식 등을 입력 (줄바꿈 가능)
+※ 수식이 들어갈 경우 반드시 양 끝에 $ 기호를 붙여줘 (예: $x^2+y^2=1$)
+※ 지문이 필요 없는 문제면 <지문> 태그를 생략해도 됨
+</지문>
+문제 내용(발문) 입력
+
+[O] ① 보기1내용 ② 보기2내용 ③ 보기3내용 ④ 보기4내용 ⑤ 보기5내용
+[A] 정답 기호(예: ②)
+[K] 핵심 키워드 (오답 분석용)"""
+        st.code(prompt_text, language="text")
+        
+        # wp_data는 프롬프트에 넣지 않고 하단에 참고용으로만 표시합니다.
+        wp_data = get_weak_points()
+        st.caption(f"💡 참고용 전체 취약 주제: {wp_data}")
+        st.divider()
         
         all_q = get_all_quizzes()
         custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
@@ -64,10 +86,23 @@ with st.sidebar:
         v_opts = ["🎯 퀴즈 선택", "💬 우정파괴창"]
         def_view = st.selectbox("기본 화면", v_opts, index=v_opts.index(app_settings.get('default_view', v_opts[0])))
         if def_view != app_settings.get('default_view'): save_setting("default_view", def_view); st.rerun()
+        
+        mode_opts = ["⚡ 실시간 팩폭 (즉시 확인)", "🏁 최후의 심판 (마지막에 한 번에)"]
+        current_mode = app_settings.get('feedback_mode', mode_opts[0])
+        sel_mode = st.selectbox("채점 방식", mode_opts, index=mode_opts.index(current_mode))
+        if sel_mode != current_mode: save_setting("feedback_mode", sel_mode); st.rerun()
 
         with st.expander("➕ 그룹 추가"):
             new_g = st.text_input("새 그룹")
             if st.button("추가") and new_g: save_setting("custom_categories", app_settings.get("custom_categories","") + f",{new_g}"); st.rerun()
+
+        with st.expander("🆕 새 퀴즈 배포"):
+            nc = st.text_input("카테고리 (자동 분류됨)"); nt = st.text_input("퀴즈 제목"); nx = st.text_area("AI 결과물 붙여넣기", height=150)
+            if st.button("🚀 배포", use_container_width=True):
+                if nc and nt and nx:
+                    from database import get_worksheet
+                    ws_q = get_worksheet("Quizzes")
+                    if ws_q: ws_q.append_row([nc, nt, nx, time.strftime('%Y-%m-%d %H:%M:%S')]); get_all_quizzes.clear(); st.success("배포 성공!"); st.rerun()
 
         with st.expander("✏️ 퀴즈 수정/삭제"):
             if all_q:
@@ -81,7 +116,7 @@ with st.sidebar:
     qr = qrcode.QRCode(box_size=3); qr.add_data(APP_URL); buf = BytesIO()
     qr.make_image().save(buf); st.image(buf.getvalue(), width=100)
 
-# --- 메인 화면 ---
+# --- 3. 메인 화면 ---
 st.title("🧪 우정 파괴소")
 st.session_state.player_name = st.text_input("👤 참가자 이름", value=st.session_state.player_name)
 view_mode = st.radio("화면", ["🎯 퀴즈 선택", "💬 우정파괴창"], horizontal=True, label_visibility="collapsed", index=["🎯 퀴즈 선택", "💬 우정파괴창"].index(app_settings.get('default_view', "🎯 퀴즈 선택")))
@@ -131,14 +166,18 @@ else:
                     st.markdown(p[0]); st.markdown("\n".join([f"> {l}" for l in p[1].split("</지문>")[0].strip().split('\n')]))
                     if len(p[1].split("</지문>")) > 1: st.markdown(p[1].split("</지문>")[1])
                 else: st.markdown("\n".join([f"> {l}" for l in it['q'].strip().split('\n')]))
-                ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"r_{idx}", label_visibility="collapsed")
+                
+                is_ans = f"ans_{idx}" in st.session_state.user_answers
+                f_mode = app_settings.get('feedback_mode','⚡ 실시간 팩폭 (즉시 확인)')
+                ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"r_{idx}", disabled=is_ans if f_mode.startswith("⚡") else False, label_visibility="collapsed")
+                
                 if ans:
                     st.session_state.user_answers[f"ans_{idx}"] = ans
-                    if app_settings.get('feedback_mode','').startswith("⚡") :
+                    if f_mode.startswith("⚡"):
                         if ans == it['o'][it['a']]: st.success("⭕ 정답!")
                         else: st.error(f"❌ 오답! (정답: {it['o'][it['a']]})")
             
-            if st.button("🏁 제출"):
+            if st.button("🏁 제출 (미응답 시 오답)"):
                 wrongs, revs = [], []
                 for k, it in enumerate(parsed):
                     u = st.session_state.user_answers.get(f"ans_{k}"); c = it['o'][it['a']]
@@ -155,5 +194,9 @@ else:
             if app_settings.get('feedback_mode','').startswith("🏁"):
                 with st.expander("📝 채점 결과"):
                     for i, r in enumerate(st.session_state.review_data):
-                        st.markdown(f"**Q{i+1}.** {'❌ 미응답' if r['is_u'] else '⭕ 정답' if r['is_c'] else '❌ 오답'}")
+                        if r.get('is_u'):
+                            st.markdown(f"**Q{i+1}.** ❌ 미응답"); st.write("⚠️ 정답 미제공")
+                        else:
+                            st.markdown(f"**Q{i+1}.** {'⭕ 정답' if r['is_c'] else '❌ 오답'}")
+                            if not r['is_c']: st.write(f"내 답: {r['u']} / 정답: **{r['c']}**")
             st.success(f"🎉 종료! 점수: {int(st.session_state.last_score)}"); st.button("다른 퀴즈", on_click=lambda: st.rerun())
