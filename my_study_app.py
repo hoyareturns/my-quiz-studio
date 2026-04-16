@@ -14,6 +14,22 @@ from utils import robust_parse
 def get_kst_time():
     return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
 
+# --- QR코드 생성 함수 (모바일 로딩 속도를 위해 최적화) ---
+@st.cache_data(ttl=3600) # QR코드는 자주 안 바뀌므로 1시간 캐싱
+def generate_qr_code(url):
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L, # 복구율 낮추고 속도 향상
+        box_size=4, # 이미지 크기 약간 축소
+        border=2,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
 # --- 0. 페이지 설정 및 디자인 ---
 st.set_page_config(page_title="우정 파괴소", layout="centered")
 st.markdown("""
@@ -62,14 +78,18 @@ for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'revie
     if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
 
 season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
-
-# 📌 [버그 수정] 화면 탭 설정값을 안전하게 불러오도록 로직 분리
 v_opts = ["퀴즈 선택", "우정파괴창", "구역별 최강자"]
 saved_view = app_settings.get('default_view', "퀴즈 선택")
 def_view_idx = v_opts.index(saved_view) if saved_view in v_opts else 0
 
 # --- 2. 사이드바 (출제 위원실) ---
 with st.sidebar:
+    # 📌 [수정] QR코드를 사이드바 맨 위, 비밀번호창 위로 이동 (상시 노출)
+    st.caption("📱 친구 초대용 QR코드")
+    qr_img = generate_qr_code(APP_URL)
+    st.image(qr_img, width=120) # 너비를 약간 줄여 촘촘하게 배치
+    st.divider()
+
     admin_btn_name = app_settings.get("admin_btn_name", "출제 위원실 (관리자)")
     st.subheader(admin_btn_name)
     
@@ -112,7 +132,6 @@ with st.sidebar:
         def_cat = st.selectbox("처음 열릴 카테고리", all_cats, index=all_cats.index(current_def) if current_def in all_cats else 0)
         if def_cat != current_def: save_setting("default_category", def_cat); st.rerun()
         
-        # 📌 [버그 수정] 사이드바 드롭다운 안전하게 처리
         def_view = st.selectbox("기본 시작 화면", v_opts, index=def_view_idx)
         if def_view != saved_view: save_setting("default_view", def_view); st.rerun()
 
@@ -143,8 +162,6 @@ with st.sidebar:
 # --- 3. 메인 화면 ---
 st.title("우정 파괴소")
 st.session_state.player_name = st.text_input("수험번호 (자동발급/변경가능)", value=st.session_state.player_name)
-
-# 📌 [버그 수정] 안전하게 계산된 인덱스 변수 사용
 view_mode = st.radio("화면 전환", v_opts, horizontal=True, label_visibility="collapsed", index=def_view_idx)
 
 all_res = get_all_results()
