@@ -46,10 +46,9 @@ def main():
 
     if view_mode == "구역별 최강자":
         show_season_leaderboard(season_res, season_start)
-    elif view_mode == "우정파괴창":
+    elif view_mode == "우정파괴채팅": # 여기 이름을 prompts.py와 맞춤
         show_chat_room(st.session_state.player_name)
     else:
-        # 📌 퀴즈 영역에도 최신 설정값(updated_settings)을 넘겨주어 기본 카테고리가 즉시 바뀌게 함
         show_quiz_area(get_all_quizzes(), season_res, updated_settings, st.session_state.player_name, robust_parse)
 
 if __name__ == "__main__":
