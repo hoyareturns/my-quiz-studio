@@ -11,7 +11,7 @@ from database import (get_all_quizzes, get_all_results, get_settings, save_setti
 from utils import robust_parse
 from prompts import QUIZ_GENERATION_PROMPT
 
-# --- 💡 한국 표준시(KST) 및 QR 설정 ---
+# --- 💡 공통 함수 (시간, QR) ---
 def get_kst_time():
     return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
 
@@ -25,7 +25,7 @@ def generate_qr_code(url):
     img.save(buf, format="PNG")
     return buf.getvalue()
 
-# --- 🎨 디자인 (미니멀 & 모바일 최적화) ---
+# --- 🎨 디자인 시스템 ---
 st.set_page_config(page_title="우정 파괴소", layout="centered")
 st.markdown("""
 <style>
@@ -50,7 +50,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- ⚙️ 세션 관리 ---
+# --- ⚙️ 초기 설정 및 세션 ---
 APP_URL = "https://hoya-quiz-studio.streamlit.app"
 ADMIN_PASSWORD = "1234"
 app_settings = get_settings()
@@ -78,9 +78,9 @@ with st.sidebar:
     pw = st.text_input("비밀번호", type="password", label_visibility="collapsed")
     if pw == ADMIN_PASSWORD:
         st.success("인증 완료")
-        if st.button("🔥 새 시즌 시작 (랭킹 초기화)", use_container_width=True, type="primary"):
+        if st.button("🔥 새 시즌 시작", use_container_width=True, type="primary"):
             save_setting("season_start", get_kst_time())
-            save_chat("💻 시스템", "🚨 새로운 시즌이 시작되었습니다! 모든 랭킹이 초기화됩니다.")
+            save_chat("💻 시스템", "🚨 새로운 시즌이 시작되었습니다!")
             st.rerun()
         st.divider()
         all_q = get_all_quizzes()
@@ -97,9 +97,7 @@ with st.sidebar:
 
         st.divider()
         with st.expander("🆕 새 퀴즈 배포"):
-            nc = st.selectbox("그룹", all_cats)
-            nt = st.text_input("제목")
-            nx = st.text_area("AI 텍스트 붙여넣기", height=150)
+            nc = st.selectbox("그룹", all_cats); nt = st.text_input("제목"); nx = st.text_area("AI 텍스트 붙여넣기", height=150)
             if st.button("배포", use_container_width=True):
                 from database import get_worksheet
                 ws = get_worksheet("Quizzes")
@@ -114,41 +112,28 @@ with st.sidebar:
                 if st.button("수정"): update_quiz(sel_tit, e_cat, e_tit); st.rerun()
                 if st.button("삭제"): delete_quiz(sel_tit); st.rerun()
         
-        st.info("🪄 AI 프롬프트 가이드 (prompts.py 참조 중)")
+        st.info("🪄 AI 프롬프트 가이드")
         st.code(QUIZ_GENERATION_PROMPT, language="text")
 
-# --- 🏆 메인 화면 ---
+# --- 🎯 메인 화면 로직 ---
 st.title("우정 파괴소")
-st.session_state.player_name = st.text_input("수험번호 (자동발급/변경가능)", value=st.session_state.player_name)
+st.session_state.player_name = st.text_input("수험번호", value=st.session_state.player_name)
 view_mode = st.radio("탭", v_opts, horizontal=True, label_visibility="collapsed", index=def_view_idx)
 
 all_res = get_all_results()
 season_res = [r for r in all_res if r.get('Time', '') >= season_start]
 
-# --- 탭 1: 구역별 최강자 ---
+# --- 🏆 탭 1: 구역별 최강자 ---
 if view_mode == "구역별 최강자":
-    st.subheader("🏆 구역별 최강자 (시즌 랭킹)")
-    st.caption(f"이번 시즌 시작일: {season_start[:10]}")
-    if not season_res: st.info("아직 기록이 없습니다.")
+    st.subheader("🏆 전체 랭킹")
+    if not season_res: st.info("이번 시즌 기록이 없습니다.")
     else:
         df = pd.DataFrame(season_res)
-        st.markdown("### 🥇 우정 브레이커 (1위 횟수)")
+        st.markdown("### 🥇 우정 브레이커")
         top1 = df.sort_values(by=['Score', 'Duration'], ascending=[False, True]).groupby('QuizTitle').first()
         for idx, (u, c) in enumerate(top1['User'].value_counts().items()): st.write(f"{idx+1}위: **{u}** ({c}회)")
-        st.divider()
-        user_stats = df.groupby('User').agg(AvgScore=('Score', 'mean'), Attempts=('Score', 'count'))
-        valid_u = user_stats[user_stats['Attempts'] >= 2]
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("### 🎯 고인물")
-            if not valid_u.empty:
-                for u, r in valid_u.sort_values('AvgScore', ascending=False).head(3).iterrows(): st.write(f"**{u}** ({r['AvgScore']:.1f}점)")
-        with c2:
-            st.markdown("### 💀 동네북")
-            if not valid_u.empty:
-                for u, r in valid_u.sort_values('AvgScore', ascending=True).head(3).iterrows(): st.write(f"**{u}** ({r['AvgScore']:.1f}점)")
 
-# --- 탭 2: 우정파괴창 ---
+# --- 💬 탭 2: 우정파괴창 ---
 elif view_mode == "우정파괴창":
     c1, c2 = st.columns([3, 1])
     c1.subheader("우정파괴창")
@@ -158,47 +143,53 @@ elif view_mode == "우정파괴창":
         t_str = str(c.get('Time', ''))[:16]
         cls = "chat-sys" if c["User"] == "💻 시스템" else "chat-user"
         chat_box.markdown(f'<div class="chat-msg"><span class="{cls}">{c["User"]}:</span>{c["Message"]}<span class="chat-time">{t_str}</span></div>', unsafe_allow_html=True)
-    with st.form("chat_form", clear_on_submit=True):
-        m = st.text_input("메시지 입력", label_visibility="collapsed")
+    with st.form("chat_f", clear_on_submit=True):
+        m = st.text_input("입력", label_visibility="collapsed")
         if st.form_submit_button("전송", use_container_width=True) and m: save_chat(st.session_state.player_name, m); st.rerun()
 
-# --- 탭 3: 퀴즈 선택 및 풀이 ---
+# --- 🎯 탭 3: 퀴즈 선택 (이름순 정렬 적용) ---
 else:
     quizzes = get_all_quizzes()
     all_cats = list(dict.fromkeys([q.get('Category','미분류') for q in quizzes]))
     tabs = st.tabs(all_cats)
     for i, cat in enumerate(all_cats):
         with tabs[i]:
-            cat_qs = [q for q in quizzes if q.get('Category') == cat]
+            # 📌 [핵심 수정] 퀴즈 제목(Title) 기준으로 오름차순 정렬
+            cat_qs = sorted([q for q in quizzes if q.get('Category') == cat], key=lambda x: x['Title'])
             cols = st.columns(2)
             for j, q in enumerate(cat_qs):
-                if cols[j%2].button(q['Title'], use_container_width=True, key=f"qbtn_{i}_{j}"):
+                if cols[j%2].button(q['Title'], use_container_width=True, key=f"q_{i}_{j}"):
                     st.session_state.selected_quiz = q['Title']; st.session_state.quiz_finished = False; st.session_state.user_answers = {}; st.session_state.start_time = None; st.rerun()
 
     if st.session_state.selected_quiz:
         st.divider()
+        st.subheader(f"📍 {st.session_state.selected_quiz}")
         q_item = next(q for q in quizzes if q['Title'] == st.session_state.selected_quiz)
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
         
-        # 1등 도발 시스템
-        if q_res:
-            s_res = sorted(q_res, key=lambda x: (-x['Score'], x['Duration']))
-            taunt = app_settings.get(f"taunt_{q_item['Title']}", "")
-            if taunt: st.markdown(f'<div class="taunt-box">"{taunt}"<div class="taunt-author">- 현재 1등 {s_res[0]["User"]} -</div></div>', unsafe_allow_html=True)
-            if s_res[0]['User'] == st.session_state.player_name:
-                with st.expander("👑 1등의 특권: 도발 메시지"):
-                    new_t = st.text_input("도발!", value=taunt); 
-                    if st.button("적용"): save_setting(f"taunt_{q_item['Title']}", new_t); st.rerun()
+        # 👑 종목별 순위 및 도발 메시지
+        with st.expander("🥇 이 구역의 지배자들", expanded=True):
+            if q_res:
+                s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
+                s_df.index += 1
+                st.table(s_df[['User', 'Score', 'Duration']].rename(columns={'User':'닉네임', 'Score':'점수', 'Duration':'시간'}))
+                taunt = app_settings.get(f"taunt_{q_item['Title']}", "")
+                if taunt: st.markdown(f'<div class="taunt-box">"{taunt}"<div class="taunt-author">- 1등 {s_df.iloc[0]["User"]} -</div></div>', unsafe_allow_html=True)
+                if s_df.iloc[0]['User'] == st.session_state.player_name:
+                    with st.container():
+                        new_t = st.text_input("지배자의 한마디(도발)", value=taunt)
+                        if st.button("도발 저장"): save_setting(f"taunt_{q_item['Title']}", new_t); st.rerun()
+            else: st.info("첫 지배자가 되어보세요!")
 
         if st.session_state.start_time is None and not st.session_state.quiz_finished:
-            if st.button("시험 시작", use_container_width=True, type="primary"): st.session_state.start_time = time.time(); st.rerun()
+            if st.button("🚀 시험 시작", use_container_width=True, type="primary"): st.session_state.start_time = time.time(); st.rerun()
         elif not st.session_state.quiz_finished:
             parsed = robust_parse(q_item['Content'])
             for idx, it in enumerate(parsed):
                 st.markdown(f'<p class="question-header">Q{idx+1}.</p>', unsafe_allow_html=True)
                 if "<지문>" in it['q']:
-                    parts = it['q'].split("<지문>")
-                    st.markdown(parts[0]); st.markdown("\n".join([f"> {l}" for l in parts[1].split("</지문>")[0].strip().split('\n')]))
+                    p = it['q'].split("<지문>")
+                    st.markdown(p[0]); st.markdown("\n".join([f"> {l}" for l in p[1].split("</지문>")[0].strip().split('\n')]))
                 else: st.markdown(it['q'])
                 
                 is_short = it['o'] == ["주관식"]
@@ -211,7 +202,7 @@ else:
                         c_ans = str(it['a']) if is_short else it['o'][it['a']]
                         is_c = (ans.replace(" ","").lower() == c_ans.replace(" ","").lower()) if is_short else (ans == c_ans)
                         if is_c: st.success("정답!")
-                        else: 
+                        else:
                             st.error(f"오답! (정답: {c_ans})")
                             st.markdown(f'<div class="exp-box"><b>📝 해설:</b><br>{it["e"]}</div>', unsafe_allow_html=True)
 
@@ -223,10 +214,13 @@ else:
                     is_c = (u and u.replace(" ","").lower() == c.replace(" ","").lower()) if it['o'] == ["주관식"] else (u == c)
                     if not is_c: wrongs.append(it['k'])
                 score = ((len(parsed)-len(wrongs))/len(parsed))*100
-                save_result(q_item['Title'], st.session_state.player_name, score, time.time()-st.session_state.start_time, wrongs)
+                duration = time.time()-st.session_state.start_time
+                save_result(q_item['Title'], st.session_state.player_name, score, duration, wrongs)
                 if score == 100: save_chat("💻 시스템", f"🎉 [{st.session_state.player_name}]님이 '{q_item['Title']}' 만점!")
+                if not q_res or score > max([r['Score'] for r in q_res]):
+                    save_chat("💻 시스템", f"🚨 [{st.session_state.player_name}]님이 '{q_item['Title']}'의 새로운 지배자가 되었습니다!")
                 st.session_state.quiz_finished = True; st.session_state.last_score = score; st.rerun()
 
         if st.session_state.quiz_finished:
             st.success(f"완료! 점수: {int(st.session_state.last_score)}점")
-            if st.button("다른 퀴즈", use_container_width=True): st.session_state.selected_quiz = ""; st.rerun()
+            if st.button("다른 퀴즈 하러 가기", use_container_width=True): st.session_state.selected_quiz = ""; st.rerun()
