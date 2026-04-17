@@ -97,3 +97,17 @@ def save_result(title, user, score, duration, wrongs):
         wr_ws = get_worksheet("WrongAnswers")
         if wr_ws: [wr_ws.append_row([user, k, get_kst_time()]) for k in wrongs]
     get_all_results.clear()
+
+def save_quiz(title, category, content):
+    """
+    AI가 생성한 퀴즈를 구글 시트(Quizzes)에 저장하는 함수입니다.
+    """
+    # 1. Quizzes 시트 불러오기 (없으면 헤더와 함께 생성)
+    ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
+    
+    if ws:
+        # 2. 카테고리, 제목, 생성된 퀴즈 내용, 현재 시간(KST)을 순서대로 저장
+        ws.append_row([category, title, content, get_kst_time()])
+        
+        # 3. 캐시를 지워서 방금 만든 퀴즈가 메인 화면에 즉시 보이게 함
+        get_all_quizzes.clear()
