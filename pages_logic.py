@@ -59,32 +59,49 @@ def show_chat_room(player_name):
             st.rerun()
 
 # --- 퀴즈 선택 영역 ---
+# (pages_logic.py 내 show_quiz_area 함수 부분 교체)
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
+    # 카테고리 리스트 생성
     all_cats = list(dict.fromkeys([q.get('Category','미분류') for q in quizzes]))
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
     if "우정퀴즈" not in all_cats: all_cats.append("우정퀴즈")
+    
     all_display_cats = list(dict.fromkeys(custom_cats + all_cats))
     
+    # [관리자 설정 연동] 처음 열릴 카테고리를 리스트 맨 앞으로 이동
+    default_cat_name = app_settings.get("default_category", "우정퀴즈")
+    if default_cat_name in all_display_cats:
+        all_display_cats.remove(default_cat_name)
+        all_display_cats.insert(0, default_cat_name)
+
     tabs = st.tabs(all_display_cats)
     
     for i, cat in enumerate(all_display_cats):
         with tabs[i]:
-            # 우정퀴즈 탭인 경우 상단에 '함정 파기'(생성) 메뉴 배치
+            # 우정퀴즈 탭인 경우 상단에 출제 메뉴 노출
             if cat == "우정퀴즈":
                 with st.expander("나만의 우정 파괴 퀴즈 만들기", expanded=False):
-                    q_title = st.text_input("퀴즈 제목", placeholder="예: 진주여고 맛집 상식", key="new_q_title")
-                    q_topic = st.text_input("퀴즈 주제", placeholder="예: AI가 제안하는 진주시 제일여고 근처 맛집상식", key="new_q_topic")
-                    if st.button("함정 파기 (AI 출제)", use_container_width=True):
+                    q_title = st.text_input("퀴즈 제목", placeholder="예: 우리들의 비밀", key="new_q_title")
+                    q_topic = st.text_input("퀴즈 주제", placeholder="예: 어제 먹은 점심 메뉴", key="new_q_topic")
+                    if st.button("AI 출제 시작", use_container_width=True):
                         api_key = st.secrets.get("GEMINI_API_KEY")
                         if api_key and q_title and q_topic:
-                            with st.spinner("AI가 문제를 생성 중입니다..."):
+                            with st.spinner("생성 중..."):
                                 try:
-                                    text = generate_quiz_with_ai(api_key, q_topic)
-                                    save_quiz(q_title, "우정퀴즈", text)
-                                    st.success("함정 설치 완료!")
-                                    time.sleep(1); get_all_quizzes.clear(); st.rerun()
-                                except Exception as e: st.error(f"오류 발생: {e}")
+                                    # utils에서 함수를 가져와 실행하는 로직 유지
+                                    generated_text = generate_quiz_with_ai(api_key, q_topic)
+                                    save_quiz(q_title, "우정퀴즈", generated_text)
+                                    st.success("배포 완료!")
+                                    time.sleep(1)
+                                    get_all_quizzes.clear()
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"생성 실패: {e}")
                 st.divider()
+
+            # 해당 카테고리 퀴즈 목록 출력
+            cat_qs = [q for q in quizzes if q.get('Category') == cat]
+            # ... (이하 기존 퀴즈 버튼 생성 로직 유지)
 
             cat_qs = [q for q in quizzes if q.get('Category') == cat]
             if cat == "우정퀴즈":
