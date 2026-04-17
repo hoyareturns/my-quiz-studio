@@ -16,15 +16,21 @@ def main():
         layout="centered"
     )
 
-    # [2] 스타일 및 모바일 최적화 CSS (이모지 제거 및 간격 압축)
+    # [2] 스타일 및 여백 최적화 CSS
     apply_custom_style()
     st.markdown("""
         <style>
-        /* 수험번호 입력창 라벨 숨기기 및 간격 조정 */
+        /* 수험번호 입력창 라벨 숨기기 */
         div[data-testid="stTextInput"] label { display: none !important; }
-        div[data-testid="stTextInput"] { margin-top: -15px !important; }
-        .main .block-container { padding-top: 2.5rem !important; }
-        h1 { margin-bottom: 0.5rem !important; font-size: 2rem !important; }
+        
+        /* 메인 컨테이너 상단 여백 최소화 */
+        .main .block-container { padding-top: 1.5rem !important; }
+        
+        /* 타이틀과 입력창 간격 조정 */
+        h1 { margin-top: -10px !important; margin-bottom: 20px !important; font-size: 2.2rem !important; }
+        
+        /* 수험번호 입력창 디자인 슬림화 */
+        .stTextInput input { font-size: 0.9rem !important; color: #888 !important; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -37,18 +43,22 @@ def main():
         st.divider()
         show_admin_sidebar(app_settings, get_kst_time)
 
-    # [3] 상단 타이틀
-    st.title("우정 파괴소")
-
-    # [4] 수험번호 영역 (자동 생성 및 슬림 입력창)
+    # [3] 아이디(수험번호) 자동 생성 및 최상단 배치
     if 'player_name' not in st.session_state or not st.session_state.player_name:
         results = get_all_results()
         nums = [int(re.match(r"우정파괴자(\d+)", str(r.get('User',''))).group(1)) for r in results if re.match(r"우정파괴자(\d+)", str(r.get('User','')))]
         st.session_state.player_name = f"우정파괴자{max(nums + [0]) + 1}"
 
-    st.session_state.player_name = st.text_input("수험번호", value=st.session_state.player_name)
+    # 타이틀보다 위에 작게 배치
+    st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name, placeholder="아이디 입력")
 
-    # [5] 화면 모드 선택
+    # [4] 메인 타이틀
+    st.title("우정 파괴소")
+
+    # [5] 기존 아이디 자리를 비우기 위한 공백 (한 칸 띄움)
+    st.write("") 
+
+    # [6] 화면 모드 선택 (탭 메뉴)
     updated_settings = get_settings() 
     saved_view = updated_settings.get('default_view', "퀴즈 선택")
     def_view_idx = VIEW_OPTIONS.index(saved_view) if saved_view in VIEW_OPTIONS else 0
@@ -57,10 +67,11 @@ def main():
     season_start = updated_settings.get('season_start', '2000-01-01 00:00:00')
     season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
 
+    # 세션 변수 체크
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list']:
         if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
 
-    # [6] 탭별 화면 출력
+    # [7] 탭별 화면 출력
     if view_mode == "구역별 최강자":
         show_season_leaderboard(season_res, season_start)
     elif view_mode == "우정파괴채팅": 
