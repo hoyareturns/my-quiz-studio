@@ -145,7 +145,10 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
 # --- 🛠️ 퀴즈 상세 화면 렌더링 함수 ---
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
     with st.container(border=True):
-        st.markdown(f"### 📍 {q_item['Title']}")
+        
+        # 📌 [수정됨] 이모지 제거 및 글자 크기 축소 (### -> ####)
+        st.markdown(f"#### {q_item['Title']}")
+        
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
         
         with st.expander("🥇 이 구역의 지배자들", expanded=True):
