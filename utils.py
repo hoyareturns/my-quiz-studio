@@ -2,7 +2,6 @@ import re
 import google.generativeai as genai
 
 def clean_text(text):
-    """불필요한 태그, 마크다운 기호 및 수식 기호 치환"""
     if not text: return ""
     
     text = text.replace(r"^{\circ}", "°")
@@ -15,7 +14,6 @@ def clean_text(text):
     return text
 
 def robust_parse(text):
-    """지문(<지문>)과 질문을 명확히 분리하고 누락된 태그에 유연하게 대처"""
     if not text: return []
     
     first_q_pos = text.find("[Q")
@@ -30,7 +28,6 @@ def robust_parse(text):
         try:
             q_match = re.search(r'(.*?)(?=\[O\])', chunk, re.S)
             o_match = re.search(r'\[O\](.*?)(?=\[A\])', chunk, re.S)
-            
             a_match = re.search(r'\[A\](.*?)(?=\[K\]|\[E\]|$)', chunk, re.S)
             k_match = re.search(r'\[K\](.*?)(?=\[E\]|$)', chunk, re.S)
             e_match = re.search(r'\[E\](.*)', chunk, re.S)
@@ -41,7 +38,6 @@ def robust_parse(text):
             q_raw = q_match.group(1)
             o_raw = o_match.group(1).strip()
             a_raw = a_match.group(1).strip()
-            
             k_raw = k_match.group(1).strip() if k_match else ""
             e_raw = e_match.group(1).strip() if e_match else "제공된 해설이 없습니다."
             
@@ -58,8 +54,9 @@ def robust_parse(text):
                 opts = ["주관식"]
                 ans = clean_text(a_raw)
             else:
-                opts = re.findall(r'[①-⑤1-5]\s*[^①-⑤1-5]+', o_raw)
-                opts = [re.sub(r'[①-⑤1-5]\s*', '', opt).strip() for opt in opts]
+                # [핵심 수정] 일반 숫자 1-5를 제거하고 오직 동그라미 기호 [①-⑤]로만 분리합니다.
+                opts = re.findall(r'[①-⑤]\s*[^①-⑤]+', o_raw)
+                opts = [re.sub(r'[①-⑤]\s*', '', opt).strip() for opt in opts]
                 
                 ans = -1
                 ans_symbols = ['①', '②', '③', '④', '⑤', '1', '2', '3', '4', '5']
@@ -82,12 +79,10 @@ def robust_parse(text):
     return parsed
 
 def generate_quiz_with_ai(api_key, q_topic):
-    """지정된 모델 순서대로 API 호출을 시도하고 모두 실패 시 에러를 발생시킵니다."""
     genai.configure(api_key=api_key)
     from prompts import QUIZ_GENERATION_PROMPT
     full_prompt = f"{QUIZ_GENERATION_PROMPT}\n\n주제: [{q_topic}]"
     
-    # 요청하신 3단계 모델 전환 순서
     models_to_try = [
         'gemini-2.5-flash-lite',
         'gemini-2.5-flash',
@@ -105,9 +100,7 @@ def generate_quiz_with_ai(api_key, q_topic):
                 return response.text
                 
         except Exception as e:
-            # 현재 모델에서 에러가 발생하면 기록해두고 다음 모델로 넘어감
             last_error = str(e)
             continue
             
-    # 모든 모델이 실패했을 경우 최종적으로 에러를 발생시킴
     raise Exception(f"모든 AI 모델 호출 실패. 마지막 에러: {last_error}")
