@@ -16,97 +16,98 @@ def main():
         layout="centered"
     )
 
-    # [2] 스타일 및 여백 최적화 CSS
+    # [2] 스타일 최적화 (버튼 크기 축소 및 간격 제거)
     apply_custom_style()
     st.markdown("""
         <style>
-        /* 1. 사이드바 아이콘 보존 및 상단 여백 제거 */
-        .main .block-container { 
-            padding-top: 3.5rem !important; 
-            padding-bottom: 1rem !important; 
+        /* 상단 여백 제거 */
+        header[data-testid="stHeader"] { visibility: hidden; height: 0px; }
+        .main .block-container { padding-top: 2rem !important; }
+
+        /* 입력창 및 버튼 높이 대폭 축소 */
+        div[data-testid="stTextInput"] input {
+            height: 30px !important;
+            padding: 5px !important;
+            font-size: 0.9rem !important;
         }
-        
-        /* 2. 기존 입력창 라벨 숨기기 */
-        div[data-testid="stTextInput"] label { display: none !important; }
-        
-        /* 3. 타이틀과 아이디 한 줄 배치를 위한 커스텀 스타일 */
-        .header-box {
+        div[data-testid="stButton"] button {
+            height: 30px !important;
+            padding-top: 0px !important;
+            padding-bottom: 0px !important;
+            line-height: 30px !important;
+            font-size: 0.8rem !important;
+        }
+
+        /* 한 줄 배치용 컨테이너 */
+        .header-row {
             display: flex;
             align-items: center;
-            justify-content: flex-start;
             gap: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
-        .main-title {
-            font-size: 1.8rem !important;
+        .title-text {
+            font-size: 1.5rem !important;
             font-weight: 800;
             margin: 0 !important;
-            white-space: nowrap;
         }
-        .id-colon {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #333;
-        }
-        
-        /* 4. 입력창 슬림화 및 위치 조정 */
-        div[data-testid="stHorizontalBlock"] {
-            align-items: center !important;
-        }
-        
-        /* 모바일 대응: 화면 폭에 따른 크기 조정 */
-        @media (max-width: 768px) {
-            .main-title { font-size: 1.4rem !important; }
-            .id-colon { font-size: 1.2rem; }
-        }
+
+        /* 라벨 숨기기 */
+        div[data-testid="stTextInput"] label { display: none !important; }
         </style>
     """, unsafe_allow_html=True)
 
     app_settings = get_settings()
-    APP_URL = "https://hoya-quiz-studio.streamlit.app"
     
-    # [3] 사이드바 (관리자 모드 및 QR코드)
-    # 상단 패딩을 3.5rem으로 늘려 사이드바 버튼(>>)이 가려지지 않게 했습니다.
+    # [3] 사이드바
     with st.sidebar:
         show_admin_sidebar(app_settings, get_kst_time)
         st.divider()
         st.caption("친구 초대용 QR코드")
-        st.image(generate_qr_code(APP_URL), width=120)
+        st.image(generate_qr_code("https://hoya-quiz-studio.streamlit.app"), width=100)
 
-    # [4] 아이디 자동 생성 로직
+    # [4] 아이디 자동 생성
     if 'player_name' not in st.session_state or not st.session_state.player_name:
         results = get_all_results()
         nums = [int(re.match(r"우정파괴자(\d+)", str(r.get('User',''))).group(1)) for r in results if re.match(r"우정파괴자(\d+)", str(r.get('User','')))]
         st.session_state.player_name = f"우정파괴자{max(nums + [0]) + 1}"
 
-    # [5] 우정 파괴소 : 아이디 한 줄 배치 구현
-    # columns의 비율을 조절하여 타이틀 뒤에 바로 콜론과 입력창이 붙게 함
-    c1, c2, c3 = st.columns([0.35, 0.05, 0.6])
+    # [5] 타이틀 및 아이디 한 줄 배치 (콜론 제거)
+    c1, c2 = st.columns([0.5, 0.5])
     with c1:
-        st.markdown('<p class="main-title">우정 파괴소</p>', unsafe_allow_html=True)
+        st.markdown('<p class="title-text">우정 파괴소</p>', unsafe_allow_html=True)
     with c2:
-        st.markdown('<p class="id-colon">:</p>', unsafe_allow_html=True)
-    with c3:
-        st.session_state.player_name = st.text_input("아이디입력", value=st.session_state.player_name)
+        st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name)
 
-    # [6] 화면 모드 선택 (탭 메뉴)
-    updated_settings = get_settings() 
-    saved_view = updated_settings.get('default_view', "퀴즈 선택")
-    def_view_idx = VIEW_OPTIONS.index(saved_view) if saved_view in VIEW_OPTIONS else 0
-    view_mode = st.radio("탭", VIEW_OPTIONS, horizontal=True, label_visibility="collapsed", index=def_view_idx)
+    # [6] 기본 탭 설정 (관리자 설정값 반영 로직 강화)
+    updated_settings = get_settings()
+    # 관리자 모드에서 설정한 기본 탭 이름을 가져옴
+    default_tab_name = updated_settings.get('default_view', "우정퀴즈")
     
-    # 탭 하단 여백 추가
-    st.write("") 
-    st.write("")
+    # VIEW_OPTIONS에서 해당 탭의 인덱스를 찾음 (못 찾으면 0번)
+    try:
+        def_idx = VIEW_OPTIONS.index(default_tab_name)
+    except ValueError:
+        def_idx = 0
 
+    view_mode = st.radio(
+        "탭", 
+        VIEW_OPTIONS, 
+        horizontal=True, 
+        label_visibility="collapsed", 
+        index=def_idx,
+        key="main_tab_selector"
+    )
+    
+    st.write("") # 미세 간격
+
+    # 데이터 로드
     season_start = updated_settings.get('season_start', '2000-01-01 00:00:00')
     season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
 
-    # 세션 변수 초기화
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list']:
         if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
 
-    # [7] 탭별 화면 출력
+    # [7] 화면 출력
     if view_mode == "구역별 최강자":
         show_season_leaderboard(season_res, season_start)
     elif view_mode == "우정파괴채팅": 
