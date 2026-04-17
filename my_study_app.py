@@ -37,8 +37,8 @@ def main():
         st.write("")
         with st.popover("함정 파기", use_container_width=True):
             st.markdown("### 나만의 우정 파괴 퀴즈 생성")
-            q_title = st.text_input("퀴즈 제목", placeholder="예: 진주여고 맛집 상식")
-            q_topic = st.text_input("퀴즈 주제", placeholder="예: AI가 제안하는 진주시 제일여고 근처 맛집상식")
+            q_title = st.text_input("퀴즈 제목", placeholder="예: 진주제일여자고등학교 맛집상식")
+            q_topic = st.text_input("퀴즈 주제", placeholder="예: AI가 제안하는 진주제일여고 근처 맛집상식")
             
             if st.button("AI 출제 시작", use_container_width=True):
                 try:

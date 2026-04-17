@@ -68,7 +68,7 @@ def robust_parse(text):
             
     return parsed
 
-def generate_quiz_with_ai(api_key, q_topic, model_name='gemini-1.5-flash'):
+def generate_quiz_with_ai(api_key, q_topic, model_name='gemini-2.5-flash'):
     """
     AI를 호출하여 프롬프트 규칙에 맞게 퀴즈를 생성합니다.
     추후 모델이 변경되거나 프롬프트를 수정할 때 이 함수만 건드리면 됩니다.
