@@ -6,7 +6,7 @@ from database import get_chats, save_chat, save_setting, get_all_quizzes, save_r
 
 # --- 🏆 구역별 최강자 로직 ---
 def show_season_leaderboard(season_res, season_start):
-    st.subheader("🏆 구역별 최강자")
+    st.subheader(" 구역별 최강자")
     st.caption(f"이번 시즌 시작일: {season_start[:10]}")
     if not season_res:
         st.info("이번 시즌 기록이 없습니다.")
@@ -14,7 +14,7 @@ def show_season_leaderboard(season_res, season_start):
         df = pd.DataFrame(season_res)
         
         # 1. 🥇 우정 브레이커 (1등 횟수)
-        st.markdown("### 🥇 우정 브레이커")
+        st.markdown("###  우정 브레이커")
         first_places = df.sort_values(by=['Score', 'Duration'], ascending=[False, True]).groupby('QuizTitle').first()
         breaker_counts = first_places['User'].value_counts()
         if not breaker_counts.empty:
@@ -31,14 +31,14 @@ def show_season_leaderboard(season_res, season_start):
         
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("### 🎯 고인물")
+            st.markdown("###  고인물")
             if not valid_u.empty:
                 for u, r in valid_u.sort_values('AvgScore', ascending=False).head(3).iterrows():
                     st.write(f"**{u}** ({r['AvgScore']:.1f}점)")
             else:
                 st.caption("2회 이상 참여자가 부족합니다.")
         with c2:
-            st.markdown("### 💀 동네북")
+            st.markdown("###  동네북")
             if not valid_u.empty:
                 for u, r in valid_u.sort_values('AvgScore', ascending=True).head(3).iterrows():
                     st.write(f"**{u}** ({r['AvgScore']:.1f}점)")
@@ -50,7 +50,7 @@ def show_chat_room(player_name):
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     
     c1, c2 = st.columns([3, 1])
-    c1.subheader("💬 우정파괴채팅")
+    c1.subheader(" 우정파괴채팅")
     if c2.button("새로고침", key="chat_refresh"): 
         get_chats.clear()
         st.rerun()
