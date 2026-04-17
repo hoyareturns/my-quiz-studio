@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from collections import Counter
 import re
 
-# 💡 [핵심 패치] 한국 표준시(KST) 계산 함수
 def get_kst_time():
     return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
 
@@ -31,46 +30,43 @@ def get_worksheet(sheet_name, columns=None):
 @st.cache_data(ttl=10)
 def get_all_quizzes():
     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
-    return sorted(ws.get_all_records(), key=lambda x: str(x.get('CreatedAt', '')), reverse=True) if ws else []
-
-@st.cache_data(ttl=10)
-def get_all_results():
-    ws = get_worksheet("Results", ["QuizTitle", "User", "Score", "Duration", "Time"])
-    return ws.get_all_records() if ws else []
+    if ws:
+        return sorted(ws.get_all_records(), key=lambda x: x.get('CreatedAt', ''), reverse=True)
+    return []
 
 @st.cache_data(ttl=10)
 def get_settings():
     ws = get_worksheet("Settings", ["Key", "Value"])
-    if ws: return {str(r['Key']): str(r['Value']) for r in ws.get_all_records()}
+    if ws:
+        return {r['Key']: r['Value'] for r in ws.get_all_records()}
     return {}
 
 def save_setting(key, value):
     ws = get_worksheet("Settings")
     if ws:
         cell = ws.find(key, in_column=1)
-        if cell: ws.update_cell(cell.row, 2, str(value))
-        else: ws.append_row([key, str(value)])
-    get_settings.clear()
+        if cell: ws.update_cell(cell.row, 2, value)
+        else: ws.append_row([key, value])
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=10)
 def get_chats():
-    ws = get_worksheet("Chat", ["Time", "User", "Message"])
-    return ws.get_all_records()[-50:] if ws else []
+    ws = get_worksheet("Chats", ["User", "Message", "Time"])
+    if ws: return ws.get_all_records()[-50:]
+    return []
 
-def save_chat(user, message):
-    ws = get_worksheet("Chat")
-    # 한국 시간으로 저장
-    if ws: ws.append_row([get_kst_time(), user, message])
-    get_chats.clear()
+def save_chat(user, msg):
+    ws = get_worksheet("Chats")
+    if ws: ws.append_row([user, msg, get_kst_time()])
 
-@st.cache_data(ttl=30)
-def get_weak_points():
-    ws = get_worksheet("WrongAnswers", ["User", "Keyword", "Time"])
-    if ws:
-        data = ws.get_all_records()
-        counts = Counter([d.get('Keyword', '') for d in data if d.get('Keyword', '')])
-        return ", ".join([f"{k}({c}회)" for k, c in counts.most_common(3)])
-    return "데이터 없음"
+@st.cache_data(ttl=10)
+def get_all_results():
+    ws = get_worksheet("Results", ["QuizTitle", "User", "Score", "Duration", "Time"])
+    if ws: return ws.get_all_records()
+    return []
+
+def save_quiz(title, cat, content):
+    ws = get_worksheet("Quizzes")
+    if ws: ws.append_row([cat, title, content, get_kst_time()])
 
 def update_quiz(old_title, new_cat, new_tit):
     ws = get_worksheet("Quizzes")
@@ -91,23 +87,7 @@ def delete_quiz(title):
 
 def save_result(title, user, score, duration, wrongs):
     res_ws = get_worksheet("Results")
-    # 한국 시간으로 저장
     if res_ws: res_ws.append_row([title, user, score, round(duration, 2), get_kst_time()])
     if wrongs:
         wr_ws = get_worksheet("WrongAnswers")
         if wr_ws: [wr_ws.append_row([user, k, get_kst_time()]) for k in wrongs]
-    get_all_results.clear()
-
-def save_quiz(title, category, content):
-    """
-    AI가 생성한 퀴즈를 구글 시트(Quizzes)에 저장하는 함수입니다.
-    """
-    # 1. Quizzes 시트 불러오기 (없으면 헤더와 함께 생성)
-    ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
-    
-    if ws:
-        # 2. 카테고리, 제목, 생성된 퀴즈 내용, 현재 시간(KST)을 순서대로 저장
-        ws.append_row([category, title, content, get_kst_time()])
-        
-        # 3. 캐시를 지워서 방금 만든 퀴즈가 메인 화면에 즉시 보이게 함
-        get_all_quizzes.clear()

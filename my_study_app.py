@@ -18,7 +18,7 @@ def main():
     apply_custom_style()
     st.markdown("""
         <style>
-        /* 사이드바 열기 버튼 영역 확보 및 클릭 활성화 */
+        /* 사이드바 화살표(>) 확보 */
         header[data-testid="stHeader"] { 
             background-color: rgba(0,0,0,0) !important; 
             pointer-events: none !important; 
@@ -47,26 +47,17 @@ def main():
             margin: 0 !important;
             white-space: nowrap;
         }
-
-        /* 해설 박스 스타일 */
-        .exp-box {
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-left: 5px solid #ff4b4b;
-            margin-top: 5px;
-            font-size: 0.9rem;
-            color: #333;
-        }
         </style>
     """, unsafe_allow_html=True)
 
     app_settings = get_settings()
+    APP_URL = "https://hoya-quiz-studio.streamlit.app"
     
     with st.sidebar:
         show_admin_sidebar(app_settings, get_kst_time)
         st.divider()
         st.caption("친구 초대용 QR코드")
-        st.image(generate_qr_code("https://hoya-quiz-studio.streamlit.app"), width=100)
+        st.image(generate_qr_code(APP_URL), width=100)
 
     if 'player_name' not in st.session_state or not st.session_state.player_name:
         results = get_all_results()
@@ -80,7 +71,7 @@ def main():
     with c2:
         st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name)
 
-    # 아이디와 탭 메뉴 사이 간격 추가 (한 칸 더 추가)
+    # 간격 확보
     st.write("")
     st.write("")
     st.write("")
