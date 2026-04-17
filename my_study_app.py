@@ -18,6 +18,31 @@ def main():
 
     # 📌 [2] 스타일 및 초기 설정 로드
     apply_custom_style()
+    
+    # 🪄 [핵심 추가] 모바일 강제 한 줄 배치 CSS
+    st.markdown("""
+        <style>
+        /* 화면 폭이 좁은 모바일 기기에서 작동 */
+        @media (max-width: 768px) {
+            /* 타이틀(h1)이 포함된 컬럼 묶음만 강제로 가로(row) 유지 */
+            div[data-testid="stHorizontalBlock"]:has(h1) {
+                flex-direction: row !important;
+                align-items: center !important;
+            }
+            /* 타이틀 쪽(왼쪽) 영역 넓게 유지 (비율 3) */
+            div[data-testid="stHorizontalBlock"]:has(h1) > div[data-testid="column"]:nth-child(1) {
+                width: 75% !important;
+                flex: 3 1 0% !important;
+            }
+            /* 버튼 쪽(오른쪽) 영역 좁게 유지 (비율 1) */
+            div[data-testid="stHorizontalBlock"]:has(h1) > div[data-testid="column"]:nth-child(2) {
+                width: 25% !important;
+                flex: 1 1 0% !important;
+            }
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     app_settings = get_settings()
     APP_URL = "https://hoya-quiz-studio.streamlit.app"
     
@@ -37,8 +62,8 @@ def main():
         st.write("")
         with st.popover("함정 파기", use_container_width=True):
             st.markdown("### 나만의 우정 파괴 퀴즈 생성")
-            q_title = st.text_input("퀴즈 제목", placeholder="예: 진주제일여자고등학교 맛집상식")
-            q_topic = st.text_input("퀴즈 주제", placeholder="예: AI가 제안하는 진주제일여고 근처 맛집상식")
+            q_title = st.text_input("퀴즈 제목", placeholder="예: 진주여고 맛집 상식")
+            q_topic = st.text_input("퀴즈 주제", placeholder="예: AI가 제안하는 진주시 제일여고 근처 맛집상식")
             
             if st.button("AI 출제 시작", use_container_width=True):
                 try:
@@ -51,7 +76,7 @@ def main():
                     if not q_title or not q_topic:
                         st.warning("제목과 주제를 모두 입력하세요.")
                     else:
-                        with st.spinner("우정파괴퀴즈 생성 중입니다..."):
+                        with st.spinner("AI가 지옥의 문제를 생성 중입니다..."):
                             try:
                                 generated_text = generate_quiz_with_ai(api_key, q_topic)
                                 save_quiz(q_title, "우정퀴즈", generated_text)

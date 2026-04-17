@@ -47,7 +47,6 @@ def show_season_leaderboard(season_res, season_start):
 
 # --- 💬 우정파괴채팅 로직 ---
 def show_chat_room(player_name):
-    # 📌 점프를 위한 상단 앵커
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     
     c1, c2 = st.columns([3, 1])
@@ -69,7 +68,6 @@ def show_chat_room(player_name):
             st.session_state.chat_jump = True 
             st.rerun()
 
-    # 📌 채팅 탭 진입 시나 메시지 전송 시 상단으로 자동 스크롤
     components.html(
         """
         <script>
@@ -84,7 +82,6 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
     all_cats = list(dict.fromkeys([q.get('Category','미분류') for q in quizzes]))
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
     
-    # "우정퀴즈" 카테고리가 없어도 탭이 생성되도록 강제 추가
     if "우정퀴즈" not in all_cats and "우정퀴즈" not in custom_cats:
         all_cats.append("우정퀴즈")
         
@@ -101,7 +98,6 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
         with tabs[i]:
             cat_qs = [q for q in quizzes if q.get('Category') == cat]
             
-            # 📌 카테고리별 정렬 방식 분기 (우정퀴즈는 인기순 정렬 유지)
             if cat == "우정퀴즈":
                 if season_res:
                     pop_counts = pd.DataFrame(season_res)['QuizTitle'].value_counts().to_dict()
@@ -146,8 +142,8 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
     with st.container(border=True):
         
-        # 📌 [수정됨] 이모지 제거 및 글자 크기 축소 (### -> ####)
-        st.markdown(f"#### {q_item['Title']}")
+        # 📌 [수정됨] 이모지 삭제 및 글자 크기를 본문과 동일하게 맞춤 (대신 굵게만 표시)
+        st.markdown(f"**{q_item['Title']}**")
         
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
         
