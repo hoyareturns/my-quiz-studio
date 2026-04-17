@@ -2,11 +2,13 @@ import streamlit as st
 import pandas as pd
 import time
 import streamlit.components.v1 as components
-from database import get_chats, save_chat, save_setting, get_all_quizzes, save_result
+from utils import robust_parse, generate_quiz_with_ai
+from database import get_chats, save_chat, save_setting, get_all_quizzes, save_result, save_quiz
 
-# --- 🏆 구역별 최강자 로직 (복구 완료!) ---
+
+# --- 🏆 구역별 최강자 로직 ---
 def show_season_leaderboard(season_res, season_start):
-    st.subheader("구역별 최강자")
+    st.subheader(" 구역별 최강자")
     st.caption(f"이번 시즌 시작일: {season_start[:10]}")
     if not season_res:
         st.info("이번 시즌 기록이 없습니다.")
@@ -25,7 +27,7 @@ def show_season_leaderboard(season_res, season_start):
         
         st.divider()
         
-        # 2. 🎯 고인물 & 💀 동네북 (평균 점수, 2회 이상 참여자 기준)
+        # 2. 🎯 고인물 &  동네북 (평균 점수, 2회 이상 참여자 기준)
         user_stats = df.groupby('User').agg(AvgScore=('Score', 'mean'), Attempts=('Score', 'count'))
         valid_u = user_stats[user_stats['Attempts'] >= 2]
         
@@ -44,13 +46,14 @@ def show_season_leaderboard(season_res, season_start):
                     st.write(f"**{u}** ({r['AvgScore']:.1f}점)")
             else:
                 st.caption("2회 이상 참여자가 부족합니다.")
-# --- 💬 우정파괴채팅 로직 (명칭 변경 및 자동 점프 적용) ---
+
+# --- 💬 우정파괴채팅 로직 ---
 def show_chat_room(player_name):
     # 📌 점프를 위한 상단 앵커
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     
     c1, c2 = st.columns([3, 1])
-    c1.subheader("💬 우정파괴채팅") # 명칭 변경
+    c1.subheader("💬 우정파괴채팅")
     if c2.button("새로고침", key="chat_refresh"): 
         get_chats.clear()
         st.rerun()
@@ -65,7 +68,7 @@ def show_chat_room(player_name):
         m = st.text_input("메시지 입력", label_visibility="collapsed")
         if st.form_submit_button("전송", use_container_width=True) and m:
             save_chat(player_name, m)
-            st.session_state.chat_jump = True # 채팅 전송 후 위치 고정 신호
+            st.session_state.chat_jump = True 
             st.rerun()
 
     # 📌 채팅 탭 진입 시나 메시지 전송 시 상단으로 자동 스크롤
@@ -78,10 +81,15 @@ def show_chat_room(player_name):
         height=0
     )
 
-# --- 🎯 퀴즈 선택 및 풀이 로직 (이미지 제거 및 앵커 점프 유지) ---
+# --- 🎯 퀴즈 선택 및 출제 영역 ---
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
     all_cats = list(dict.fromkeys([q.get('Category','미분류') for q in quizzes]))
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
+    
+    # "우정퀴즈" 카테고리가 없어도 탭이 생성되도록 강제 추가
+    if "우정퀴즈" not in all_cats and "우정퀴즈" not in custom_cats:
+        all_cats.append("우정퀴즈")
+        
     all_display_cats = list(dict.fromkeys(custom_cats + all_cats))
     
     default_cat = app_settings.get('default_category', all_display_cats[0] if all_display_cats else "")
@@ -89,11 +97,55 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
         all_display_cats.remove(default_cat)
         all_display_cats.insert(0, default_cat)
 
+    # 📌 [수정됨] 타이틀 및 "함정 파기" 팝업 버튼 배치
+    col_t, col_b = st.columns([3, 1])
+    with col_t:
+        st.write("") # 높이 맞춤용
+    with col_b:
+        with st.popover("💣 함정 파기", use_container_width=True):
+            st.markdown("### ☠️ 나만의 우정 파괴 퀴즈 생성")
+            q_title = st.text_input("퀴즈 제목", placeholder="예: 무시무시한 롤 상식")
+            q_topic = st.text_input("퀴즈 주제", placeholder="예: 롤 브론즈 티어 탈출 상식")
+            
+            if st.button("AI 출제 시작", use_container_width=True):
+                try:
+                    api_key = st.secrets["GEMINI_API_KEY"]
+                except KeyError:
+                    st.error("서버에 API 키가 설정되지 않았습니다.")
+                    api_key = None
+                    
+                if api_key:
+                    if not q_title or not q_topic:
+                        st.warning("제목과 주제를 모두 입력하세요.")
+                    else:
+                        with st.spinner("AI가 지옥의 문제를 생성 중입니다..."):
+                            try:
+                                # 📌 복잡한 코드가 단 한 줄로 깔끔하게 정리됨!
+                                generated_text = generate_quiz_with_ai(api_key, q_topic)
+                                
+                                save_quiz(q_title, "우정퀴즈", generated_text)
+                                st.success("함정이 성공적으로 파졌습니다! '우정퀴즈' 탭을 확인하세요.")
+                                time.sleep(2)
+                                get_all_quizzes.clear() 
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"생성 실패: {e}")
+
     tabs = st.tabs(all_display_cats)
     
     for i, cat in enumerate(all_display_cats):
         with tabs[i]:
-            cat_qs = sorted([q for q in quizzes if q.get('Category') == cat], key=lambda x: x['Title'])
+            cat_qs = [q for q in quizzes if q.get('Category') == cat]
+            
+            # 📌 [수정됨] 카테고리별 정렬 방식 분기 (우정퀴즈는 인기순)
+            if cat == "우정퀴즈":
+                if season_res:
+                    pop_counts = pd.DataFrame(season_res)['QuizTitle'].value_counts().to_dict()
+                else:
+                    pop_counts = {}
+                cat_qs = sorted(cat_qs, key=lambda x: pop_counts.get(x['Title'], 0), reverse=True)
+            else:
+                cat_qs = sorted(cat_qs, key=lambda x: x['Title'])
             
             if not cat_qs: 
                 st.caption("등록된 퀴즈 없음")
@@ -126,7 +178,7 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         )
                         st.session_state.should_jump = False
 
-# --- 🛠️ 퀴즈 상세 화면 렌더링 함수 (이미지 제거 버전 유지) ---
+# --- 🛠️ 퀴즈 상세 화면 렌더링 함수 ---
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
     with st.container(border=True):
         st.markdown(f"### 📍 {q_item['Title']}")
