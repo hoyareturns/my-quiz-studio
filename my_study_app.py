@@ -18,12 +18,11 @@ def main():
     apply_custom_style()
     st.markdown("""
         <style>
-        /* 1. 사이드바 열기 버튼(>)이 가려지지 않도록 상단 헤더 투명화 및 여백 조정 */
+        /* 사이드바 열기 버튼 영역 확보 및 클릭 활성화 */
         header[data-testid="stHeader"] { 
             background-color: rgba(0,0,0,0) !important; 
             pointer-events: none !important; 
         }
-        /* 사이드바 버튼 자체는 클릭 가능하게 설정 */
         button[data-testid="stSidebarCollapseButton"] {
             pointer-events: auto !important;
             z-index: 9999 !important;
@@ -31,7 +30,7 @@ def main():
 
         .main .block-container { padding-top: 5rem !important; }
 
-        /* 2. 아이디 입력창 디자인 및 라벨 제거 */
+        /* 입력창 라벨 숨기기 및 스타일 */
         div[data-testid="stTextInput"] label { display: none !important; }
         div[data-testid="stTextInput"] input {
             height: 35px !important;
@@ -42,12 +41,21 @@ def main():
             border-radius: 0 !important;
         }
         
-        /* 3. 타이틀 한 줄 고정 */
         .title-text {
             font-size: 1.6rem !important;
             font-weight: 800;
             margin: 0 !important;
             white-space: nowrap;
+        }
+
+        /* 해설 박스 스타일 */
+        .exp-box {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-left: 5px solid #ff4b4b;
+            margin-top: 5px;
+            font-size: 0.9rem;
+            color: #333;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -72,11 +80,11 @@ def main():
     with c2:
         st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name)
 
-    # 요청사항: 아이디와 퀴즈 선택 사이에 한 칸 더 띄우기
+    # 아이디와 탭 메뉴 사이 간격 추가 (한 칸 더 추가)
+    st.write("")
     st.write("")
     st.write("")
 
-    # 기본 탭 설정
     default_view = app_settings.get('default_view', "퀴즈 선택")
     def_idx = VIEW_OPTIONS.index(default_view) if default_view in VIEW_OPTIONS else 0
 

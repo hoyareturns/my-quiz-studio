@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import time
-import streamlit.components.v1 as components
 from database import get_chats, save_chat, save_setting, get_all_quizzes, save_result, save_quiz
 from utils import generate_quiz_with_ai, robust_parse
 
@@ -109,7 +108,6 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.user_answers = {}
                         st.session_state.answered_list = []
                         st.session_state.start_time = None
-                        st.session_state.should_jump = True
                         st.rerun()
 
             if st.session_state.selected_quiz:
@@ -121,6 +119,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
     with st.container(border=True):
         st.markdown(f"**{q_item['Title']}**")
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
+        
         with st.expander("이 구역의 지배자들", expanded=True):
             if q_res:
                 s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
@@ -133,23 +132,53 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             if st.button("시험 시작하기", use_container_width=True, type="primary"): 
                 st.session_state.start_time = time.time()
                 st.rerun()
+        
         elif not st.session_state.quiz_finished:
             parsed = robust_parse(q_item['Content'])
-            is_realtime = "실시간" in app_settings.get('feedback_mode', '')
+            is_realtime = "실시간 팩폭" in app_settings.get('feedback_mode', '')
+            
             for idx, it in enumerate(parsed):
-                st.markdown(f"**Q{idx+1}. {it['q']}**")
-                is_short = it['o'] == ["주관식"]
-                is_disabled = is_realtime and (idx in st.session_state.answered_list)
-                if is_short: 
-                    ans = st.text_input(f"답_{idx}", key=f"in_{idx}", disabled=is_disabled)
-                else: 
-                    ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"in_{idx}", label_visibility="collapsed", disabled=is_disabled)
+                st.divider()
+                # [핵심 로직] 긴 지문이 포함되어 있는지 확인 (글자 수 기준)
+                is_long_text = len(it['q']) > 100 
                 
-                if ans and is_realtime and idx not in st.session_state.answered_list:
-                    st.session_state.user_answers[f"ans_{idx}"] = ans
-                    st.session_state.answered_list.append(idx)
-                    st.rerun()
+                if is_long_text:
+                    # 지문 영역을 연한 회색 배경 박스로 분리
+                    st.markdown(f"""
+                        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; margin-bottom: 10px;">
+                            <span style="color: #555; font-size: 0.8rem; font-weight: bold;">지문</span><br>
+                            <p style="color: #333; line-height: 1.6;">{it['q']}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    st.write("위 글을 읽고 질문에 답하세요.")
+                else:
+                    # 일반 짧은 질문
+                    st.markdown(f"**Q{idx+1}. {it['q']}**")
+                
+                is_short = it['o'] == ["주관식"]
+                is_answered = idx in st.session_state.answered_list
+                
+                if is_short: 
+                    ans = st.text_input(f"답_{idx}", key=f"in_{idx}", disabled=is_answered, placeholder="정답 입력")
+                else: 
+                    ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"in_{idx}", label_visibility="collapsed", disabled=is_answered)
+                
+                if ans and is_realtime:
+                    if not is_answered:
+                        st.session_state.user_answers[f"ans_{idx}"] = ans
+                        st.session_state.answered_list.append(idx)
+                        st.rerun()
+                    
+                    correct_ans = str(it['a']) if is_short else it['o'][it['a']]
+                    is_correct = (ans.replace(" ","").lower() == correct_ans.replace(" ","").lower()) if is_short else (ans == correct_ans)
+                    
+                    if is_correct:
+                        st.success("정답입니다!")
+                    else:
+                        st.error(f"오답입니다! (정답: {correct_ans})")
+                        st.info(f"해설: {it['e']}")
 
+            st.write("")
             if st.button("최종 제출", use_container_width=True):
                 wrongs = []
                 for k, it in enumerate(parsed):
@@ -157,6 +186,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
                     is_c = (u and u.replace(" ","").lower() == c.replace(" ","").lower()) if it['o'] == ["주관식"] else (u == c)
                     if not is_c: wrongs.append(it['k'])
+                
                 score = ((len(parsed)-len(wrongs))/len(parsed))*100
                 save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs)
                 st.session_state.quiz_finished = True
@@ -164,7 +194,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                 st.rerun()
 
     if st.session_state.quiz_finished:
-        st.success(f"점수: {int(st.session_state.last_score)}점")
+        st.success(f"최종 결과: {int(st.session_state.last_score)}점")
         if st.button("목록으로 돌아가기", use_container_width=True): 
             st.session_state.selected_quiz = ""
             st.rerun()
