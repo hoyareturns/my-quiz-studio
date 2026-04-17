@@ -3,7 +3,7 @@ import pandas as pd
 import time
 import streamlit.components.v1 as components
 from database import get_chats, save_chat, save_setting, get_all_quizzes, save_result, save_quiz
-from utils import generate_quiz_with_ai
+from utils import generate_quiz_with_ai, robust_parse
 
 # --- 구역별 최강자 로직 ---
 def show_season_leaderboard(season_res, season_start):
@@ -59,51 +59,51 @@ def show_chat_room(player_name):
             st.rerun()
 
 # --- 퀴즈 선택 영역 ---
-# (pages_logic.py 내 show_quiz_area 함수 부분 교체)
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
-    # 카테고리 리스트 생성
+    # 1. 카테고리 리스트 구성
     all_cats = list(dict.fromkeys([q.get('Category','미분류') for q in quizzes]))
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
     if "우정퀴즈" not in all_cats: all_cats.append("우정퀴즈")
-    
     all_display_cats = list(dict.fromkeys(custom_cats + all_cats))
     
-    # [관리자 설정 연동] 처음 열릴 카테고리를 리스트 맨 앞으로 이동
+    # 2. 관리자 설정 카테고리를 리스트 맨 앞으로 이동 (우선순위 적용)
     default_cat_name = app_settings.get("default_category", "우정퀴즈")
     if default_cat_name in all_display_cats:
         all_display_cats.remove(default_cat_name)
         all_display_cats.insert(0, default_cat_name)
 
+    # 3. 탭 생성
     tabs = st.tabs(all_display_cats)
     
     for i, cat in enumerate(all_display_cats):
         with tabs[i]:
-            # 우정퀴즈 탭인 경우 상단에 출제 메뉴 노출
+            # 탭 메뉴와 본문 사이 공백 추가
+            st.write("") 
+            
+            # 우정퀴즈 탭인 경우 생성 메뉴 배치
             if cat == "우정퀴즈":
                 with st.expander("나만의 우정 파괴 퀴즈 만들기", expanded=False):
-                    q_title = st.text_input("퀴즈 제목", placeholder="예: 우리들의 비밀", key="new_q_title")
-                    q_topic = st.text_input("퀴즈 주제", placeholder="예: 어제 먹은 점심 메뉴", key="new_q_topic")
+                    q_title = st.text_input("퀴즈 제목", placeholder="제목 입력", key="new_q_title")
+                    q_topic = st.text_input("퀴즈 주제", placeholder="주제 입력", key="new_q_topic")
                     if st.button("AI 출제 시작", use_container_width=True):
                         api_key = st.secrets.get("GEMINI_API_KEY")
                         if api_key and q_title and q_topic:
-                            with st.spinner("생성 중..."):
+                            with st.spinner("AI가 문제를 생성 중입니다..."):
                                 try:
-                                    # utils에서 함수를 가져와 실행하는 로직 유지
-                                    generated_text = generate_quiz_with_ai(api_key, q_topic)
-                                    save_quiz(q_title, "우정퀴즈", generated_text)
-                                    st.success("배포 완료!")
+                                    text = generate_quiz_with_ai(api_key, q_topic)
+                                    save_quiz(q_title, "우정퀴즈", text)
+                                    st.success("함정 설치 완료")
                                     time.sleep(1)
                                     get_all_quizzes.clear()
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"생성 실패: {e}")
+                                    st.error(f"오류 발생: {e}")
                 st.divider()
 
-            # 해당 카테고리 퀴즈 목록 출력
+            # 해당 카테고리의 퀴즈 목록 필터링
             cat_qs = [q for q in quizzes if q.get('Category') == cat]
-            # ... (이하 기존 퀴즈 버튼 생성 로직 유지)
-
-            cat_qs = [q for q in quizzes if q.get('Category') == cat]
+            
+            # 인기순/가나다순 정렬
             if cat == "우정퀴즈":
                 pop_counts = pd.DataFrame(season_res)['QuizTitle'].value_counts().to_dict() if season_res else {}
                 cat_qs = sorted(cat_qs, key=lambda x: pop_counts.get(x['Title'], 0), reverse=True)
@@ -111,7 +111,7 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                 cat_qs = sorted(cat_qs, key=lambda x: x['Title'])
             
             if not cat_qs: 
-                st.caption("등록된 퀴즈 없음")
+                st.caption("등록된 퀴즈가 없습니다")
             else:
                 cols = st.columns(2)
                 for j, q in enumerate(cat_qs):
@@ -124,6 +124,7 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.should_jump = True
                         st.rerun()
 
+            # 선택된 퀴즈 상세 화면 호출
             if st.session_state.selected_quiz:
                 selected_q_item = next((q for q in quizzes if q['Title'] == st.session_state.selected_quiz), None)
                 if selected_q_item and selected_q_item.get('Category') == cat:
@@ -140,11 +141,13 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                 s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
                 s_df.index += 1
                 st.table(s_df[['User', 'Score', 'Duration']].rename(columns={'User':'수험번호', 'Score':'점수', 'Duration':'시간'}))
-            else: st.info("첫 지배자가 되어보세요!")
+            else: 
+                st.info("첫 지배자가 되어보세요")
 
         if st.session_state.start_time is None and not st.session_state.quiz_finished:
             if st.button("시험 시작하기", use_container_width=True, type="primary"): 
-                st.session_state.start_time = time.time(); st.rerun()
+                st.session_state.start_time = time.time()
+                st.rerun()
         
         elif not st.session_state.quiz_finished:
             parsed = robust_parse(q_item['Content'])
@@ -153,12 +156,16 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                 st.markdown(f"**Q{idx+1}. {it['q']}**")
                 is_short = it['o'] == ["주관식"]
                 is_disabled = is_realtime and (idx in st.session_state.answered_list)
-                if is_short: ans = st.text_input(f"답_{idx}", key=f"in_{idx}", disabled=is_disabled)
-                else: ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"in_{idx}", label_visibility="collapsed", disabled=is_disabled)
+                
+                if is_short: 
+                    ans = st.text_input(f"답_{idx}", key=f"in_{idx}", disabled=is_disabled)
+                else: 
+                    ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"in_{idx}", label_visibility="collapsed", disabled=is_disabled)
                 
                 if ans and is_realtime and idx not in st.session_state.answered_list:
                     st.session_state.user_answers[f"ans_{idx}"] = ans
-                    st.session_state.answered_list.append(idx); st.rerun()
+                    st.session_state.answered_list.append(idx)
+                    st.rerun()
 
             if st.button("최종 제출", use_container_width=True):
                 wrongs = []
@@ -167,11 +174,15 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
                     is_c = (u and u.replace(" ","").lower() == c.replace(" ","").lower()) if it['o'] == ["주관식"] else (u == c)
                     if not is_c: wrongs.append(it['k'])
+                
                 score = ((len(parsed)-len(wrongs))/len(parsed))*100
                 save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs)
-                st.session_state.quiz_finished = True; st.session_state.last_score = score; st.rerun()
+                st.session_state.quiz_finished = True
+                st.session_state.last_score = score
+                st.rerun()
 
     if st.session_state.quiz_finished:
         st.success(f"점수: {int(st.session_state.last_score)}점")
         if st.button("목록으로 돌아가기", use_container_width=True): 
-            st.session_state.selected_quiz = ""; st.rerun()
+            st.session_state.selected_quiz = ""
+            st.rerun()

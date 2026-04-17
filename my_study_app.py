@@ -18,14 +18,14 @@ def main():
     apply_custom_style()
     st.markdown("""
         <style>
-        /* 상단 바 숨기기 및 사이드바 버튼 공간 확보 */
+        /* 1. 사이드바 아이콘(>)을 노출시키기 위해 상단 여백을 대폭 늘림 (3.5rem -> 4.5rem) */
         header[data-testid="stHeader"] { visibility: hidden; height: 0px; }
-        .main .block-container { padding-top: 3.5rem !important; }
+        .main .block-container { padding-top: 4.5rem !important; }
 
-        /* 아이디 입력창 슬림화 및 라벨 제거 */
+        /* 2. 아이디 입력창 디자인 */
         div[data-testid="stTextInput"] label { display: none !important; }
         div[data-testid="stTextInput"] input {
-            height: 32px !important;
+            height: 35px !important;
             padding: 2px 8px !important;
             font-size: 0.9rem !important;
             border: none !important;
@@ -33,19 +33,12 @@ def main():
             border-radius: 0 !important;
         }
         
-        /* 한 줄 배치 강제 적용 */
-        .header-row {
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
+        /* 3. 타이틀 한 줄 고정 및 밀림 방지 */
         .title-text {
             font-size: 1.6rem !important;
             font-weight: 800;
             margin: 0 !important;
-            white-space: nowrap; /* 줄바꿈 방지 */
+            white-space: nowrap;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -53,6 +46,7 @@ def main():
     app_settings = get_settings()
     
     with st.sidebar:
+        # 관리자 비밀번호 입력창 등이 있는 사이드바 호출
         show_admin_sidebar(app_settings, get_kst_time)
         st.divider()
         st.caption("친구 초대용 QR코드")
@@ -63,7 +57,7 @@ def main():
         nums = [int(re.match(r"우정파괴자(\d+)", str(r.get('User',''))).group(1)) for r in results if re.match(r"우정파괴자(\d+)", str(r.get('User','')))]
         st.session_state.player_name = f"우정파괴자{max(nums + [0]) + 1}"
 
-    # 상단 한 줄 배치
+    # 타이틀과 아이디 입력창 한 줄 배치
     c1, c2 = st.columns([0.45, 0.55])
     with c1:
         st.markdown('<p class="title-text">우정 파괴소</p>', unsafe_allow_html=True)
@@ -83,6 +77,7 @@ def main():
         key="main_tab_selector"
     )
     
+    # 퀴즈 선택 위쪽에 공백 추가
     st.write("") 
 
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
@@ -96,6 +91,7 @@ def main():
     elif view_mode == "우정파괴채팅": 
         show_chat_room(st.session_state.player_name)
     else:
+        # 퀴즈 영역 호출
         show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse)
 
 if __name__ == "__main__":
