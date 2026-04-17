@@ -1,6 +1,5 @@
 import streamlit as st
 import re
-import streamlit.components.v1 as components
 from database import get_all_quizzes, get_all_results, get_settings, get_chats
 from utils import robust_parse
 from prompts import VIEW_OPTIONS
@@ -9,42 +8,19 @@ from pages_logic import show_season_leaderboard, show_chat_room, show_quiz_area
 from my_study_app_utils import get_kst_time, generate_qr_code, apply_custom_style
 
 def main():
-    # 📌 [1] 페이지 기본 설정 (반드시 가장 먼저 실행!)
+    # 📌 [1] 페이지 기본 설정 (PC 웹 브라우저 탭 아이콘은 유지)
     st.set_page_config(
         page_title="우정 파괴소",
         page_icon="logo.png",
         layout="centered"
     )
 
-    # 📌 [2] 모바일 앱 아이콘 강제 주입 로직
-    LOGO_URL = "https://raw.githubusercontent.com/hoyareturns/my-quiz-studio/main/logo.png"
-    MANIFEST_URL = "https://raw.githubusercontent.com/hoyareturns/my-quiz-studio/main/manifest.json"
-
-    components.html(
-        f"""
-        <script>
-            // iOS 및 안드로이드 홈 화면 아이콘용 태그 주입
-            var iconLink = window.parent.document.createElement('link');
-            iconLink.rel = 'apple-touch-icon';
-            iconLink.href = '{LOGO_URL}';
-            window.parent.document.head.appendChild(iconLink);
-
-            // PWA 앱 모드(주소창 숨김 등)를 위한 매니페스트 주입
-            var manifestLink = window.parent.document.createElement('link');
-            manifestLink.rel = 'manifest';
-            manifestLink.href = '{MANIFEST_URL}';
-            window.parent.document.head.appendChild(manifestLink);
-        </script>
-        """,
-        height=0
-    )
-
-    # 📌 [3] 스타일 및 초기 설정 로드
+    # 📌 [2] 스타일 및 초기 설정 로드
     apply_custom_style()
     app_settings = get_settings()
     APP_URL = "https://hoya-quiz-studio.streamlit.app"
     
-    # 📌 [4] 사이드바 구성
+    # 📌 [3] 사이드바 구성
     with st.sidebar:
         st.caption("📱 친구 초대용 QR코드")
         st.image(generate_qr_code(APP_URL), width=120)
@@ -52,7 +28,7 @@ def main():
         # 사이드바에서 설정 변경 시 리런(rerun)이 발생함
         show_admin_sidebar(app_settings, get_kst_time)
 
-    # 📌 [5] 메인 화면 구성
+    # 📌 [4] 메인 화면 구성
     st.title("우정 파괴소")
 
     if 'player_name' not in st.session_state or not st.session_state.player_name:
@@ -65,7 +41,7 @@ def main():
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list']:
         if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
 
-    # 📌 [6] 화면 모드 선택 및 동기화
+    # 📌 [5] 화면 모드 선택 및 동기화
     updated_settings = get_settings() 
     
     saved_view = updated_settings.get('default_view', "퀴즈 선택")
@@ -76,7 +52,7 @@ def main():
     all_res = get_all_results()
     season_res = [r for r in all_res if r.get('Time', '') >= season_start]
 
-    # 📌 [7] 탭별 화면 출력
+    # 📌 [6] 탭별 화면 출력
     if view_mode == "구역별 최강자":
         show_season_leaderboard(season_res, season_start)
     elif view_mode == "우정파괴채팅": 
