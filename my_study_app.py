@@ -30,7 +30,9 @@ def main():
             pointer-events: auto !important;
             z-index: 9999 !important;
         }
+
         .main .block-container { padding-top: 5rem !important; }
+
         div[data-testid="stTextInput"] label { display: none !important; }
         div[data-testid="stTextInput"] input {
             height: 35px !important;
@@ -40,6 +42,7 @@ def main():
             border-bottom: 1px solid #ddd !important;
             border-radius: 0 !important;
         }
+        
         .title-text {
             font-size: 1.6rem !important;
             font-weight: 800;
@@ -58,7 +61,6 @@ def main():
         st.caption("친구 초대용 QR코드")
         st.image(generate_qr_code(APP_URL), width=100)
 
-    # 중복 없는 랜덤 아이디 생성
     if 'player_name' not in st.session_state or not st.session_state.player_name:
         results = get_all_results()
         chats = get_chats()
