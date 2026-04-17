@@ -1,4 +1,5 @@
 import re
+import google.generativeai as genai
 
 def robust_parse(text):
     # 📌 [추가] LaTeX 기호 및 특수 기호 전처리
@@ -66,3 +67,27 @@ def robust_parse(text):
             continue
             
     return parsed
+
+def generate_quiz_with_ai(api_key, q_topic, model_name='gemini-1.5-flash'):
+    """
+    AI를 호출하여 프롬프트 규칙에 맞게 퀴즈를 생성합니다.
+    추후 모델이 변경되거나 프롬프트를 수정할 때 이 함수만 건드리면 됩니다.
+    """
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(model_name)
+    
+    # 📌 프롬프트 템플릿 독립 관리
+    full_prompt = f"""
+    아래 형식에 맞춰 [{q_topic}]에 대한 객관식 10문제를 출제해.
+    인사말 쓰지 말고 [Q1]부터 출력해. 그림, 표, 그래프 등 텍스트로 표현할 수 없는 자료는 절대 포함하지 마.
+
+    [객관식 포맷]
+    [Q] <지문> (수식은 $ 기호 사용) </지문> 
+    [O] ① 보기1 ② 보기2 ③ 보기3 ④ 보기4 ⑤ 보기5
+    [A] 정답 기호(예: ②)
+    [K] 키워드
+    [E] 이 문제가 정답인 이유와 오답들이 틀린 이유를 구체적으로 설명
+    """
+    
+    response = model.generate_content(full_prompt)
+    return response.text
