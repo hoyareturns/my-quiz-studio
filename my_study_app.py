@@ -1,6 +1,7 @@
 import streamlit as st
 import re
 import time
+import random
 from database import get_all_quizzes, get_all_results, get_settings, get_chats, save_quiz
 from utils import robust_parse, generate_quiz_with_ai
 from prompts import VIEW_OPTIONS
@@ -59,10 +60,27 @@ def main():
         st.caption("친구 초대용 QR코드")
         st.image(generate_qr_code(APP_URL), width=100)
 
+    # [수정] 랜덤 아이디 생성 및 중복 방지 로직
     if 'player_name' not in st.session_state or not st.session_state.player_name:
         results = get_all_results()
-        nums = [int(re.match(r"우정파괴자(\d+)", str(r.get('User',''))).group(1)) for r in results if re.match(r"우정파괴자(\d+)", str(r.get('User','')))]
-        st.session_state.player_name = f"우정파괴자{max(nums + [0]) + 1}"
+        chats = get_chats()
+        
+        # 기존에 사용된 모든 아이디 수집
+        existing_users = set()
+        for r in results:
+            if r.get('User'):
+                existing_users.add(str(r['User']))
+        for c in chats:
+            if c.get('User'):
+                existing_users.add(str(c['User']))
+                
+        # 중복되지 않는 랜덤 아이디 발급 (예: 우정파괴자4021)
+        while True:
+            rand_num = random.randint(1000, 9999)
+            new_id = f"우정파괴자{rand_num}"
+            if new_id not in existing_users:
+                st.session_state.player_name = new_id
+                break
 
     # 상단 한 줄 배치
     c1, c2 = st.columns([0.45, 0.55])
