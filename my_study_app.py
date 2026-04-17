@@ -20,17 +20,29 @@ def main():
     apply_custom_style()
     st.markdown("""
         <style>
-        /* 수험번호 입력창 라벨 숨기기 */
+        /* 1. 최상단 불필요한 공백 제거 */
+        header[data-testid="stHeader"] { display: none !important; }
+        .main .block-container { 
+            padding-top: 0rem !important; 
+            padding-bottom: 1rem !important; 
+        }
+        
+        /* 2. 아이디 입력창 라벨 숨기기 및 간격 미세 조정 */
         div[data-testid="stTextInput"] label { display: none !important; }
+        div[data-testid="stTextInput"] { margin-top: 10px !important; }
         
-        /* 메인 컨테이너 상단 여백 최소화 */
-        .main .block-container { padding-top: 1.5rem !important; }
+        /* 3. 타이틀 폰트 및 하단 간격 */
+        h1 { 
+            margin-top: 0px !important; 
+            margin-bottom: 5px !important; 
+            font-size: 2.2rem !important; 
+        }
         
-        /* 타이틀과 입력창 간격 조정 */
-        h1 { margin-top: -10px !important; margin-bottom: 20px !important; font-size: 2.2rem !important; }
+        /* 4. 탭 메뉴 하단에 의도적인 공백 추가 */
+        div[data-testid="stTable"] { margin-top: 20px !important; }
         
-        /* 수험번호 입력창 디자인 슬림화 */
-        .stTextInput input { font-size: 0.9rem !important; color: #888 !important; }
+        /* 5. 아이디 입력창 폰트 스타일 */
+        .stTextInput input { font-size: 0.85rem !important; color: #999 !important; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -43,31 +55,30 @@ def main():
         st.divider()
         show_admin_sidebar(app_settings, get_kst_time)
 
-    # [3] 아이디(수험번호) 자동 생성 및 최상단 배치
+    # [3] 최상단 배치: 아이디(수험번호)
     if 'player_name' not in st.session_state or not st.session_state.player_name:
         results = get_all_results()
         nums = [int(re.match(r"우정파괴자(\d+)", str(r.get('User',''))).group(1)) for r in results if re.match(r"우정파괴자(\d+)", str(r.get('User','')))]
         st.session_state.player_name = f"우정파괴자{max(nums + [0]) + 1}"
 
-    # 타이틀보다 위에 작게 배치
     st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name, placeholder="아이디 입력")
 
     # [4] 메인 타이틀
     st.title("우정 파괴소")
 
-    # [5] 기존 아이디 자리를 비우기 위한 공백 (한 칸 띄움)
-    st.write("") 
-
-    # [6] 화면 모드 선택 (탭 메뉴)
+    # [5] 화면 모드 선택 (탭 메뉴)
     updated_settings = get_settings() 
     saved_view = updated_settings.get('default_view', "퀴즈 선택")
     def_view_idx = VIEW_OPTIONS.index(saved_view) if saved_view in VIEW_OPTIONS else 0
     view_mode = st.radio("탭", VIEW_OPTIONS, horizontal=True, label_visibility="collapsed", index=def_view_idx)
     
+    # [6] 퀴즈 선택 메뉴 아래에 의도적인 여백 추가
+    st.write("") 
+    st.write("")
+
     season_start = updated_settings.get('season_start', '2000-01-01 00:00:00')
     season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
 
-    # 세션 변수 체크
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list']:
         if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
 
