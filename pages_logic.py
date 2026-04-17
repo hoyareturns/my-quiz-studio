@@ -56,16 +56,29 @@ def show_chat_room(player_name):
             st.rerun()
 
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
-    all_cats = list(dict.fromkeys([q.get('Category','미분류') for q in quizzes]))
-    custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
-    if "우정퀴즈" not in all_cats: all_cats.append("우정퀴즈")
-    all_display_cats = list(dict.fromkeys(custom_cats + all_cats))
+    # 1. 실제 퀴즈 데이터가 존재하는 카테고리 수집
+    cats_with_quizzes = set(q.get('Category', '미분류') for q in quizzes)
     
-    # 관리자 설정 카테고리 우선 배치
+    # 2. 관리자가 설정한 카테고리 목록 가져오기
+    custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
+    
+    # 3. 노출할 카테고리 필터링 (우정퀴즈는 항상 포함, 나머지는 퀴즈가 있는 경우만)
+    candidates = list(dict.fromkeys(custom_cats + list(cats_with_quizzes) + ["우정퀴즈"]))
+    all_display_cats = []
+    
+    for cat in candidates:
+        if cat == "우정퀴즈" or cat in cats_with_quizzes:
+            all_display_cats.append(cat)
+    
+    # 4. 기본 카테고리 우선 배치
     default_cat_name = app_settings.get("default_category", "우정퀴즈")
     if default_cat_name in all_display_cats:
         all_display_cats.remove(default_cat_name)
         all_display_cats.insert(0, default_cat_name)
+
+    if not all_display_cats:
+        st.info("표시할 카테고리가 없습니다.")
+        return
 
     tabs = st.tabs(all_display_cats)
     
@@ -82,11 +95,14 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                             with st.spinner("생성 중..."):
                                 try:
                                     text = generate_quiz_with_ai(api_key, q_topic)
-                                    save_quiz(q_title, "우정퀴즈", text)
-                                    st.success("배포 완료")
-                                    time.sleep(1)
-                                    get_all_quizzes.clear()
-                                    st.rerun()
+                                    if not text or text.startswith("오류 발생") or text.startswith("AI API 호출 실패"):
+                                        st.error(f"생성 실패: {text}")
+                                    else:
+                                        save_quiz(q_title, "우정퀴즈", text)
+                                        st.success("배포 완료")
+                                        time.sleep(1)
+                                        get_all_quizzes.clear()
+                                        st.rerun()
                                 except Exception as e:
                                     st.error(f"오류: {e}")
                 st.divider()
@@ -136,12 +152,15 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
         
         elif not st.session_state.quiz_finished:
             parsed = robust_parse(q_item['Content'])
+            
+            if not parsed:
+                st.error("데이터 오류: 문제를 불러올 수 없습니다.")
+            
             is_realtime = "실시간 팩폭" in app_settings.get('feedback_mode', '')
             
             for idx, it in enumerate(parsed):
                 st.divider()
                 
-                # 지문(<지문>) 표시
                 if it.get('p'):
                     st.markdown(f"""
                         <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #ccc;">
@@ -149,7 +168,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                         </div>
                     """, unsafe_allow_html=True)
                 
-                # 질문 표시
                 st.markdown(f"**Q{idx+1}. {it['q']}**")
                 
                 is_short = it['o'] == ["주관식"]
@@ -160,7 +178,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                 else: 
                     ans = st.radio(f"보기_{idx}", it['o'], index=None, key=f"in_{idx}", label_visibility="collapsed", disabled=is_answered)
                 
-                # 실시간 피드백 및 해설
                 if ans and is_realtime:
                     if not is_answered:
                         st.session_state.user_answers[f"ans_{idx}"] = ans
@@ -174,11 +191,10 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     if is_correct: st.success("정답입니다!")
                     else: st.error(f"오답입니다! (정답: {correct_ans})")
                     
-                    # 실시간 모드일 때 해설 표시
                     st.info(f"해설: {it['e']}")
 
             st.write("")
-            if st.button("최종 제출", use_container_width=True):
+            if parsed and st.button("최종 제출", use_container_width=True):
                 wrongs = []
                 for k, it in enumerate(parsed):
                     u = st.session_state.user_answers.get(f"ans_{k}", "")
