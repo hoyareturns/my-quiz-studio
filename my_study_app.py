@@ -18,11 +18,20 @@ def main():
     apply_custom_style()
     st.markdown("""
         <style>
-        /* 1. 사이드바 아이콘(>)을 노출시키기 위해 상단 여백을 대폭 늘림 (3.5rem -> 4.5rem) */
-        header[data-testid="stHeader"] { visibility: hidden; height: 0px; }
-        .main .block-container { padding-top: 4.5rem !important; }
+        /* 1. 사이드바 열기 버튼(>)이 가려지지 않도록 상단 헤더 투명화 및 여백 조정 */
+        header[data-testid="stHeader"] { 
+            background-color: rgba(0,0,0,0) !important; 
+            pointer-events: none !important; 
+        }
+        /* 사이드바 버튼 자체는 클릭 가능하게 설정 */
+        button[data-testid="stSidebarCollapseButton"] {
+            pointer-events: auto !important;
+            z-index: 9999 !important;
+        }
 
-        /* 2. 아이디 입력창 디자인 */
+        .main .block-container { padding-top: 5rem !important; }
+
+        /* 2. 아이디 입력창 디자인 및 라벨 제거 */
         div[data-testid="stTextInput"] label { display: none !important; }
         div[data-testid="stTextInput"] input {
             height: 35px !important;
@@ -33,7 +42,7 @@ def main():
             border-radius: 0 !important;
         }
         
-        /* 3. 타이틀 한 줄 고정 및 밀림 방지 */
+        /* 3. 타이틀 한 줄 고정 */
         .title-text {
             font-size: 1.6rem !important;
             font-weight: 800;
@@ -46,7 +55,6 @@ def main():
     app_settings = get_settings()
     
     with st.sidebar:
-        # 관리자 비밀번호 입력창 등이 있는 사이드바 호출
         show_admin_sidebar(app_settings, get_kst_time)
         st.divider()
         st.caption("친구 초대용 QR코드")
@@ -57,14 +65,18 @@ def main():
         nums = [int(re.match(r"우정파괴자(\d+)", str(r.get('User',''))).group(1)) for r in results if re.match(r"우정파괴자(\d+)", str(r.get('User','')))]
         st.session_state.player_name = f"우정파괴자{max(nums + [0]) + 1}"
 
-    # 타이틀과 아이디 입력창 한 줄 배치
+    # 상단 한 줄 배치
     c1, c2 = st.columns([0.45, 0.55])
     with c1:
         st.markdown('<p class="title-text">우정 파괴소</p>', unsafe_allow_html=True)
     with c2:
         st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name)
 
-    # 기본 탭 설정 (관리자 설정값 연동)
+    # 요청사항: 아이디와 퀴즈 선택 사이에 한 칸 더 띄우기
+    st.write("")
+    st.write("")
+
+    # 기본 탭 설정
     default_view = app_settings.get('default_view', "퀴즈 선택")
     def_idx = VIEW_OPTIONS.index(default_view) if default_view in VIEW_OPTIONS else 0
 
@@ -77,7 +89,6 @@ def main():
         key="main_tab_selector"
     )
     
-    # 퀴즈 선택 위쪽에 공백 추가
     st.write("") 
 
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
@@ -91,7 +102,6 @@ def main():
     elif view_mode == "우정파괴채팅": 
         show_chat_room(st.session_state.player_name)
     else:
-        # 퀴즈 영역 호출
         show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse)
 
 if __name__ == "__main__":

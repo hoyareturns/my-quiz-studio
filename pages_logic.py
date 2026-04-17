@@ -5,7 +5,6 @@ import streamlit.components.v1 as components
 from database import get_chats, save_chat, save_setting, get_all_quizzes, save_result, save_quiz
 from utils import generate_quiz_with_ai, robust_parse
 
-# --- 구역별 최강자 로직 ---
 def show_season_leaderboard(season_res, season_start):
     st.subheader("구역별 최강자")
     st.caption(f"이번 시즌 시작일: {season_start[:10]}")
@@ -36,7 +35,6 @@ def show_season_leaderboard(season_res, season_start):
                 for u, r in valid_u.sort_values('AvgScore', ascending=True).head(3).iterrows():
                     st.write(f"{u} ({r['AvgScore']:.1f}점)")
 
-# --- 우정파괴채팅 로직 ---
 def show_chat_room(player_name):
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
@@ -58,29 +56,22 @@ def show_chat_room(player_name):
             st.session_state.chat_jump = True 
             st.rerun()
 
-# --- 퀴즈 선택 영역 ---
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
-    # 1. 카테고리 리스트 구성
     all_cats = list(dict.fromkeys([q.get('Category','미분류') for q in quizzes]))
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
     if "우정퀴즈" not in all_cats: all_cats.append("우정퀴즈")
     all_display_cats = list(dict.fromkeys(custom_cats + all_cats))
     
-    # 2. 관리자 설정 카테고리를 리스트 맨 앞으로 이동 (우선순위 적용)
     default_cat_name = app_settings.get("default_category", "우정퀴즈")
     if default_cat_name in all_display_cats:
         all_display_cats.remove(default_cat_name)
         all_display_cats.insert(0, default_cat_name)
 
-    # 3. 탭 생성
     tabs = st.tabs(all_display_cats)
     
     for i, cat in enumerate(all_display_cats):
         with tabs[i]:
-            # 탭 메뉴와 본문 사이 공백 추가
             st.write("") 
-            
-            # 우정퀴즈 탭인 경우 생성 메뉴 배치
             if cat == "우정퀴즈":
                 with st.expander("나만의 우정 파괴 퀴즈 만들기", expanded=False):
                     q_title = st.text_input("퀴즈 제목", placeholder="제목 입력", key="new_q_title")
@@ -88,22 +79,19 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                     if st.button("AI 출제 시작", use_container_width=True):
                         api_key = st.secrets.get("GEMINI_API_KEY")
                         if api_key and q_title and q_topic:
-                            with st.spinner("AI가 문제를 생성 중입니다..."):
+                            with st.spinner("생성 중..."):
                                 try:
                                     text = generate_quiz_with_ai(api_key, q_topic)
                                     save_quiz(q_title, "우정퀴즈", text)
-                                    st.success("함정 설치 완료")
+                                    st.success("배포 완료")
                                     time.sleep(1)
                                     get_all_quizzes.clear()
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"오류 발생: {e}")
+                                    st.error(f"오류: {e}")
                 st.divider()
 
-            # 해당 카테고리의 퀴즈 목록 필터링
             cat_qs = [q for q in quizzes if q.get('Category') == cat]
-            
-            # 인기순/가나다순 정렬
             if cat == "우정퀴즈":
                 pop_counts = pd.DataFrame(season_res)['QuizTitle'].value_counts().to_dict() if season_res else {}
                 cat_qs = sorted(cat_qs, key=lambda x: pop_counts.get(x['Title'], 0), reverse=True)
@@ -124,18 +112,15 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.should_jump = True
                         st.rerun()
 
-            # 선택된 퀴즈 상세 화면 호출
             if st.session_state.selected_quiz:
                 selected_q_item = next((q for q in quizzes if q['Title'] == st.session_state.selected_quiz), None)
                 if selected_q_item and selected_q_item.get('Category') == cat:
                     render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
 
-# --- 퀴즈 상세 화면 렌더링 ---
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
     with st.container(border=True):
         st.markdown(f"**{q_item['Title']}**")
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
-        
         with st.expander("이 구역의 지배자들", expanded=True):
             if q_res:
                 s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
@@ -148,7 +133,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             if st.button("시험 시작하기", use_container_width=True, type="primary"): 
                 st.session_state.start_time = time.time()
                 st.rerun()
-        
         elif not st.session_state.quiz_finished:
             parsed = robust_parse(q_item['Content'])
             is_realtime = "실시간" in app_settings.get('feedback_mode', '')
@@ -156,7 +140,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                 st.markdown(f"**Q{idx+1}. {it['q']}**")
                 is_short = it['o'] == ["주관식"]
                 is_disabled = is_realtime and (idx in st.session_state.answered_list)
-                
                 if is_short: 
                     ans = st.text_input(f"답_{idx}", key=f"in_{idx}", disabled=is_disabled)
                 else: 
@@ -174,7 +157,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
                     is_c = (u and u.replace(" ","").lower() == c.replace(" ","").lower()) if it['o'] == ["주관식"] else (u == c)
                     if not is_c: wrongs.append(it['k'])
-                
                 score = ((len(parsed)-len(wrongs))/len(parsed))*100
                 save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs)
                 st.session_state.quiz_finished = True
