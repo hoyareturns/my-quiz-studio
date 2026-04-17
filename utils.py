@@ -68,15 +68,18 @@ def robust_parse(text):
             
     return parsed
 
-def generate_quiz_with_ai(api_key, q_topic, model_name='gemini-2.5-flash'):
+import re
+import google.generativeai as genai
+
+# ... (기존 robust_parse 함수 유지) ...
+
+def generate_quiz_with_ai(api_key, q_topic):
     """
     AI를 호출하여 프롬프트 규칙에 맞게 퀴즈를 생성합니다.
-    추후 모델이 변경되거나 프롬프트를 수정할 때 이 함수만 건드리면 됩니다.
+    서버 오류 시 지정된 순서대로 모델을 자동 전환하여 재시도합니다.
     """
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name)
     
-    # 📌 프롬프트 템플릿 독립 관리
     full_prompt = f"""
     아래 형식에 맞춰 [{q_topic}]에 대한 객관식 10문제를 출제해.
     인사말 쓰지 말고 [Q1]부터 출력해. 그림, 표, 그래프 등 텍스트로 표현할 수 없는 자료는 절대 포함하지 마.
@@ -89,5 +92,23 @@ def generate_quiz_with_ai(api_key, q_topic, model_name='gemini-2.5-flash'):
     [E] 이 문제가 정답인 이유와 오답들이 틀린 이유를 구체적으로 설명
     """
     
-    response = model.generate_content(full_prompt)
-    return response.text
+    # 📌 시도할 모델 순서 (사용자 지정 라인업)
+    models_to_try = [
+        'gemini-2.5-flash', 
+        'gemini-2.5-flash-lite', 
+        'gemini-3.1-pro-preview'
+    ]
+    
+    last_error = None
+    
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(full_prompt)
+            return response.text # 성공하면 바로 텍스트 반환 후 종료
+        except Exception as e:
+            last_error = e
+            continue # 에러가 나면 조용히 다음 모델로 넘어감
+            
+    # 준비된 모든 모델이 서버 오류로 실패했을 때만 에러 발생
+    raise Exception(f"현재 구글 AI 서버가 불안정합니다. 잠시 후 다시 시도해주세요. (상세 오류: {last_error})")

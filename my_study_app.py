@@ -51,7 +51,7 @@ def main():
                     if not q_title or not q_topic:
                         st.warning("제목과 주제를 모두 입력하세요.")
                     else:
-                        with st.spinner("AI가 지옥의 문제를 생성 중입니다..."):
+                        with st.spinner("우정파괴퀴즈 생성 중입니다..."):
                             try:
                                 generated_text = generate_quiz_with_ai(api_key, q_topic)
                                 save_quiz(q_title, "우정퀴즈", generated_text)
