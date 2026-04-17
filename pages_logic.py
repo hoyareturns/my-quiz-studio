@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import time
 from database import get_chats, save_chat, save_setting, get_all_quizzes, save_result, save_quiz
@@ -35,6 +36,7 @@ def show_season_leaderboard(season_res, season_start):
                     st.write(f"{u} ({r['AvgScore']:.1f}점)")
 
 def show_chat_room(player_name):
+    # 채팅용 상단 앵커
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
     c1.subheader("우정파괴채팅")
@@ -56,21 +58,15 @@ def show_chat_room(player_name):
             st.rerun()
 
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
-    # 1. 실제 퀴즈 데이터가 존재하는 카테고리 수집
     cats_with_quizzes = set(q.get('Category', '미분류') for q in quizzes)
-    
-    # 2. 관리자가 설정한 카테고리 목록 가져오기
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
-    
-    # 3. 노출할 카테고리 필터링 (우정퀴즈는 항상 포함, 나머지는 퀴즈가 있는 경우만)
     candidates = list(dict.fromkeys(custom_cats + list(cats_with_quizzes) + ["우정퀴즈"]))
-    all_display_cats = []
     
+    all_display_cats = []
     for cat in candidates:
         if cat == "우정퀴즈" or cat in cats_with_quizzes:
             all_display_cats.append(cat)
     
-    # 4. 기본 카테고리 우선 배치
     default_cat_name = app_settings.get("default_category", "우정퀴즈")
     if default_cat_name in all_display_cats:
         all_display_cats.remove(default_cat_name)
@@ -125,6 +121,8 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.user_answers = {}
                         st.session_state.answered_list = []
                         st.session_state.start_time = None
+                        # 퀴즈 선택 시 스크롤 플래그 활성화
+                        st.session_state.quiz_jump = True 
                         st.rerun()
 
             if st.session_state.selected_quiz:
@@ -133,6 +131,21 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                     render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
 
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
+    # 퀴즈 상세 화면 최상단 앵커 설정
+    st.markdown("<div id='quiz_anchor'></div>", unsafe_allow_html=True)
+    
+    # 플래그가 True일 때만 자바스크립트로 스크롤 이동
+    if st.session_state.get('quiz_jump'):
+        components.html(
+            """
+            <script>
+                window.parent.document.getElementById('quiz_anchor').scrollIntoView({behavior: 'smooth'});
+            </script>
+            """,
+            height=0
+        )
+        st.session_state.quiz_jump = False # 이동 후 소모
+
     with st.container(border=True):
         st.markdown(f"**{q_item['Title']}**")
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
@@ -160,7 +173,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             
             for idx, it in enumerate(parsed):
                 st.divider()
-                
                 if it.get('p'):
                     st.markdown(f"""
                         <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #ccc;">
@@ -169,7 +181,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     """, unsafe_allow_html=True)
                 
                 st.markdown(f"**Q{idx+1}. {it['q']}**")
-                
                 is_short = it['o'] == ["주관식"]
                 is_answered = idx in st.session_state.answered_list
                 
@@ -190,7 +201,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     
                     if is_correct: st.success("정답입니다!")
                     else: st.error(f"오답입니다! (정답: {correct_ans})")
-                    
                     st.info(f"해설: {it['e']}")
 
             st.write("")

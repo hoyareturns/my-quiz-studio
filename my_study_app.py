@@ -19,7 +19,6 @@ def main():
     apply_custom_style()
     st.markdown("""
         <style>
-        /* 사이드바 화살표(>) 확보 */
         header[data-testid="stHeader"] { 
             background-color: rgba(0,0,0,0) !important; 
             pointer-events: none !important; 
@@ -28,10 +27,7 @@ def main():
             pointer-events: auto !important;
             z-index: 9999 !important;
         }
-
         .main .block-container { padding-top: 5rem !important; }
-
-        /* 입력창 라벨 숨기기 및 스타일 */
         div[data-testid="stTextInput"] label { display: none !important; }
         div[data-testid="stTextInput"] input {
             height: 35px !important;
@@ -41,7 +37,6 @@ def main():
             border-bottom: 1px solid #ddd !important;
             border-radius: 0 !important;
         }
-        
         .title-text {
             font-size: 1.6rem !important;
             font-weight: 800;
@@ -60,21 +55,13 @@ def main():
         st.caption("친구 초대용 QR코드")
         st.image(generate_qr_code(APP_URL), width=100)
 
-    # [수정] 랜덤 아이디 생성 및 중복 방지 로직
+    # 중복 없는 랜덤 아이디 생성
     if 'player_name' not in st.session_state or not st.session_state.player_name:
         results = get_all_results()
         chats = get_chats()
-        
-        # 기존에 사용된 모든 아이디 수집
-        existing_users = set()
-        for r in results:
-            if r.get('User'):
-                existing_users.add(str(r['User']))
-        for c in chats:
-            if c.get('User'):
-                existing_users.add(str(c['User']))
+        existing_users = set(str(r.get('User')) for r in results if r.get('User'))
+        existing_users.update(set(str(c.get('User')) for c in chats if c.get('User')))
                 
-        # 중복되지 않는 랜덤 아이디 발급 (예: 우정파괴자4021)
         while True:
             rand_num = random.randint(1000, 9999)
             new_id = f"우정파괴자{rand_num}"
@@ -82,14 +69,12 @@ def main():
                 st.session_state.player_name = new_id
                 break
 
-    # 상단 한 줄 배치
     c1, c2 = st.columns([0.45, 0.55])
     with c1:
         st.markdown('<p class="title-text">우정 파괴소</p>', unsafe_allow_html=True)
     with c2:
         st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name)
 
-    # 간격 확보
     st.write("")
     st.write("")
     st.write("")
@@ -111,8 +96,10 @@ def main():
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
     season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
 
-    for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list']:
-        if k not in st.session_state: st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k == 'quiz_finished' else None
+    # 세션 상태 초기화 리스트에 quiz_jump 추가
+    for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump']:
+        if k not in st.session_state: 
+            st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump'] else None
 
     if view_mode == "구역별 최강자":
         show_season_leaderboard(season_res, season_start)
