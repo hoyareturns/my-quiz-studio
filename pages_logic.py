@@ -131,15 +131,16 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
     st.markdown("<div id='quiz_anchor'></div>", unsafe_allow_html=True)
     
+    # [수정됨] key 속성을 제거하고, script 태그 안의 주석에 time.time()을 넣어 매번 강제로 새로운 컴포넌트로 인식하게 만듦
     if st.session_state.get('quiz_jump'):
         components.html(
             f"""
             <script>
+                // timestamp: {time.time()}
                 window.parent.document.getElementById('quiz_anchor').scrollIntoView({{behavior: 'smooth'}});
             </script>
             """,
-            height=0,
-            key=f"jump_{time.time()}"
+            height=0
         )
         st.session_state.quiz_jump = False 
 
@@ -204,7 +205,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             if parsed and st.button("최종 제출", use_container_width=True):
                 wrongs = []
                 for k, it in enumerate(parsed):
-                    # [핵심 로직] 실시간 모드가 아니면 위젯(in_k)에 있는 답을 끌어옵니다.
                     u = st.session_state.user_answers.get(f"ans_{k}")
                     if u is None or u == "":
                         u = st.session_state.get(f"in_{k}", "")
@@ -213,14 +213,4 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     is_c = (str(u).replace(" ","").lower() == str(c).replace(" ","").lower()) if it['o'] == ["주관식"] else (str(u) == str(c))
                     if not is_c: wrongs.append(it['k'])
                 
-                score = ((len(parsed)-len(wrongs))/len(parsed))*100
-                save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs)
-                st.session_state.quiz_finished = True
-                st.session_state.last_score = score
-                st.rerun()
-
-    if st.session_state.quiz_finished:
-        st.success(f"최종 점수: {int(st.session_state.last_score)}점")
-        if st.button("목록으로 돌아가기", use_container_width=True): 
-            st.session_state.selected_quiz = ""
-            st.rerun()
+                score = ((len(parsed)-len(wrongs))/len(parsed
