@@ -8,6 +8,7 @@ from prompts import VIEW_OPTIONS
 from admin import show_admin_sidebar
 from pages_logic import show_season_leaderboard, show_chat_room, show_quiz_area
 from my_study_app_utils import get_kst_time, generate_qr_code, apply_custom_style
+from wrong_answer_logic import show_wrong_answer_conquest
 
 def main():
     st.set_page_config(
@@ -103,6 +104,9 @@ def main():
 
     if view_mode == "구역별 최강자":
         show_season_leaderboard(season_res, season_start)
+    elif view_mode == "오답 정복":
+        # 퀴즈 데이터와 parse 함수를 넘겨줌
+        show_wrong_answer_conquest(st.session_state.player_name, get_all_quizzes(), robust_parse)
     elif view_mode == "우정파괴채팅": 
         show_chat_room(st.session_state.player_name)
     else:
