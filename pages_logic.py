@@ -190,8 +190,8 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
 
             st.write("")
             if parsed and st.button("최종 제출", use_container_width=True):
-                wrongs_indices = [] # 기존 결과 저장용 (index)
-                wrongs_texts = []   # 신규 오답 정복용 (문제 텍스트)
+                wrongs_for_results = [] # Results 시트용 (키워드)
+                wrongs_for_conquest = [] # WrongAnswers 시트용 (문제 텍스트)
                 review_list = []
                 
                 for k, it in enumerate(parsed):
@@ -203,21 +203,19 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     is_c = (str(u).replace(" ","").lower() == str(c).replace(" ","").lower()) if it['o'] == ["주관식"] else (str(u) == str(c))
                     
                     if not is_c: 
-                        wrongs.append(it['k'])
-                        wrongs_texts.append(it['q'])
+                        wrongs_for_results.append(it['k'])
+                        wrongs_for_conquest.append(it['q']) # 오답 정복을 위해 문제 원문 저장
                         review_list.append({
-                            'idx': k + 1,
-                            'q': it['q'],
-                            'u': u if u else "미입력",
-                            'c': c,
-                            'e': it['e']
+                            'idx': k + 1, 'q': it['q'], 'u': u if u else "미입력", 'c': c, 'e': it['e']
                         })
                 
-                score = ((len(parsed)-len(wrongs))/len(parsed))*100
-                save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs_indices)
-                if wrongs_texts:
+                score = ((len(parsed)-len(wrongs_for_results))/len(parsed))*100
+                save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs_for_results)
+                
+                # [오답 기록 저장]
+                if wrongs_for_conquest:
                     from database import save_wrong_answers
-                    save_wrong_answers(q_item['Title'], player_name, wrongs_texts)
+                    save_wrong_answers(q_item['Title'], player_name, wrongs_for_conquest)
                 
                 st.session_state.quiz_finished = True
                 st.session_state.last_score = score
