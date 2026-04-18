@@ -2,6 +2,8 @@ import streamlit as st
 import gspread
 import json
 from datetime import datetime, timedelta
+from collections import Counter
+import re
 
 def get_kst_time():
     return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
@@ -57,6 +59,7 @@ def save_chat(user, msg):
     ws = get_worksheet("Chats")
     if ws:
         ws.append_row([user, msg, get_kst_time()])
+        # [핵심 로직] 채팅 작성 즉시 캐시 강제 삭제 (새로고침 불필요)
         get_chats.clear()
 
 @st.cache_data(ttl=10)
@@ -92,49 +95,14 @@ def delete_quiz(title):
             return True
     return False
 
-def save_result(title, user, score, duration, wrongs_content):
+def save_result(title, user, score, duration, wrongs):
     res_ws = get_worksheet("Results")
     if res_ws: 
         res_ws.append_row([title, user, score, round(duration, 2), get_kst_time()])
-    
-    if wrongs_content:
-        wr_ws = get_worksheet("WrongAnswers", ["User", "QuizTitle", "QuestionText", "Status", "Time"])
+    if wrongs:
+        wr_ws = get_worksheet("WrongAnswers")
         if wr_ws: 
-            for q_text in wrongs_content:
-                wr_ws.append_row([user, title, q_text, "최초틀림", get_kst_time()])
+            [wr_ws.append_row([user, k, get_kst_time()]) for k in wrongs]
     
+    # [핵심 로직] 성적 저장 즉시 캐시 강제 삭제
     get_all_results.clear()
-    get_wrong_answers_by_user.clear()
-
-@st.cache_data(ttl=5)
-def get_wrong_answers_by_user(user):
-    """특정 유저의 오답 목록 중 '맞춤'이 아닌 데이터만 가져오기"""
-    ws = get_worksheet("WrongAnswers")
-    if not ws: return []
-    all_rows = ws.get_all_records()
-    return [r for r in all_rows if str(r.get('User')) == str(user) and r.get('Status') != "맞춤"]
-
-def update_wrong_answer_status(user, quiz_title, question_text, new_status):
-    """오답의 상태를 업데이트 (맞춤/다시틀림)"""
-    ws = get_worksheet("WrongAnswers")
-    if not ws: return False
-    try:
-        all_data = ws.get_all_records()
-        for i, row in enumerate(all_data):
-            if (str(row.get('User')) == str(user) and 
-                str(row.get('QuizTitle')) == str(quiz_title) and 
-                str(row.get('QuestionText')) == str(question_text) and
-                str(row.get('Status')) != "맞춤"):
-                # i+2 (헤더행 제외 및 1-based index)
-                ws.update_cell(i + 2, 4, new_status)
-                get_wrong_answers_by_user.clear()
-                return True
-    except: pass
-    return False
-
-def get_all_users_from_results():
-    """드롭다운을 위한 전체 유저 아이디 가져오기"""
-    ws = get_worksheet("Results")
-    if not ws: return []
-    data = ws.get_all_records()
-    return sorted(list(set(str(r.get('User')) for r in data if r.get('User'))))
