@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 import time
 from database import get_chats, save_chat, save_setting, get_all_quizzes, save_result, save_quiz
@@ -131,18 +130,11 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
     st.markdown("<div id='quiz_anchor'></div>", unsafe_allow_html=True)
     
-    # [수정됨] key 속성을 제거하고, script 태그 안의 주석에 time.time()을 넣어 매번 강제로 새로운 컴포넌트로 인식하게 만듦
+    # [수정] height=0 이나 f-string 관련 에러를 방지하기 위해 가장 안정적인 형태로 JS 코드를 구성합니다.
     if st.session_state.get('quiz_jump'):
-        components.html(
-            f"""
-            <script>
-                // timestamp: {time.time()}
-                window.parent.document.getElementById('quiz_anchor').scrollIntoView({{behavior: 'smooth'}});
-            </script>
-            """,
-            height=0
-        )
-        st.session_state.quiz_jump = False 
+        st.session_state.quiz_jump = False
+        js_code = f"<script>window.parent.document.getElementById('quiz_anchor').scrollIntoView({{behavior: 'smooth'}}); /* {time.time()} */</script>"
+        st.components.v1.html(js_code, height=1)
 
     with st.container(border=True):
         st.markdown(f"**{q_item['Title']}**")
@@ -213,4 +205,14 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     is_c = (str(u).replace(" ","").lower() == str(c).replace(" ","").lower()) if it['o'] == ["주관식"] else (str(u) == str(c))
                     if not is_c: wrongs.append(it['k'])
                 
-                score = ((len(parsed)-len(wrongs))/len(parsed
+                score = ((len(parsed)-len(wrongs))/len(parsed))*100
+                save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs)
+                st.session_state.quiz_finished = True
+                st.session_state.last_score = score
+                st.rerun()
+
+    if st.session_state.quiz_finished:
+        st.success(f"최종 점수: {int(st.session_state.last_score)}점")
+        if st.button("목록으로 돌아가기", use_container_width=True): 
+            st.session_state.selected_quiz = ""
+            st.rerun()
