@@ -107,45 +107,48 @@ def save_result(title, user, score, duration, wrongs):
     # [핵심 로직] 성적 저장 즉시 캐시 강제 삭제
     get_all_results.clear()
 
-# database.py 하단에 추가
-@st.cache_data(ttl=10)
-def get_wrong_answers_by_user(user_name):
-    """특정 유저의 오답 목록을 가져옵니다."""
-    ws = get_worksheet("WrongAnswers", ["QuizTitle", "User", "QuestionText", "Status", "CreatedAt"])
-    if ws:
-        all_data = ws.get_all_records()
-        # 미정복(오답) 상태인 데이터만 필터링
-        return [r for r in all_data if r['User'] == user_name and r['Status'] == "오답"]
-    return []
+# database.py 하단에 아래 내용을 추가해 주세요.
 
 def save_wrong_answers(quiz_title, user_name, wrong_questions):
     """틀린 문제들을 WrongAnswers 시트에 저장합니다."""
     ws = get_worksheet("WrongAnswers", ["QuizTitle", "User", "QuestionText", "Status", "CreatedAt"])
     if ws:
         for q_text in wrong_questions:
-            # 중복 기록 방지 (이미 오답으로 등록된 동일 문제는 패스)
+            # 상태는 '오답'으로 저장
             ws.append_row([quiz_title, user_name, q_text, "오답", get_kst_time()])
+        get_wrong_answers_by_user.clear()
 
-def update_wrong_answer_status(user_name, quiz_title, q_text, new_status):
-    """문제를 맞혔을 때 상태를 업데이트합니다."""
+@st.cache_data(ttl=5)
+def get_wrong_answers_by_user(user_name):
+    """특정 유저의 오답 목록 중 아직 정복하지 않은 것만 가져옵니다."""
     ws = get_worksheet("WrongAnswers")
-    if ws:
-        try:
-            # 유저, 퀴즈제목, 문제내용이 일치하는 행 찾기
-            cells = ws.findall(user_name)
-            for cell in cells:
-                row_data = ws.row_values(cell.row)
-                if row_data[0] == quiz_title and row_data[2] == q_text:
-                    ws.update_cell(cell.row, 4, new_status) # Status 열 업데이트
-                    break
-        except:
-            pass
+    if not ws: return []
+    all_rows = ws.get_all_records()
+    # '오답' 상태인 데이터만 필터링
+    return [r for r in all_rows if str(r.get('User')) == str(user_name) and r.get('Status') == "오답"]
+
+def update_wrong_answer_status(user_name, quiz_title, question_text, new_status):
+    """문제를 맞혔을 때 상태를 '정복'으로 업데이트합니다."""
+    ws = get_worksheet("WrongAnswers")
+    if not ws: return False
+    try:
+        all_data = ws.get_all_records()
+        for i, row in enumerate(all_data):
+            if (str(row.get('User')) == str(user_name) and 
+                str(row.get('QuizTitle')) == str(quiz_title) and 
+                str(row.get('QuestionText')) == str(question_text) and
+                row.get('Status') == "오답"):
+                # 시트 인덱스는 헤더 포함 1-based 이므로 i + 2
+                ws.update_cell(i + 2, 4, new_status)
+                get_wrong_answers_by_user.clear()
+                return True
+    except: pass
+    return False
 
 def get_all_users_with_wrongs():
-    """오답 기록이 있는 유저 목록만 가져옵니다."""
+    """오답 기록이 남아있는 유저 목록만 가져옵니다."""
     ws = get_worksheet("WrongAnswers")
-    if ws:
-        data = ws.get_all_records()
-        users = {r['User'] for r in data if r['Status'] == "오답"}
-        return sorted(list(users))
-    return []
+    if not ws: return []
+    data = ws.get_all_records()
+    users = {str(r.get('User')) for r in data if r.get('Status') == "오답"}
+    return sorted(list(users))
