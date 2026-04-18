@@ -8,7 +8,13 @@ def clean_text(text):
     text = text.replace(r"^\circ", "°")
     text = text.replace(r"\circ", "°")
     
-    # [수정] 수학 수식(LaTeX) 보존을 위해 $와 ^ 기호를 지우는 코드를 삭제했습니다.
+    # [새로 추가된 핵심 로직] AI가 수식 기호를 텍스트로 뭉개는 것을 강제 보정
+    text = text.replace(r"\$", "$")   # 역슬래시가 붙은 $ 기호 복구
+    text = text.replace(r"\(", "$")   # \( 형태의 인라인 수식을 $로 변환
+    text = text.replace(r"\)", "$")   # \) 형태의 인라인 수식을 $로 변환
+    text = text.replace(r"\[", "$$")  # \[ 형태의 블록 수식을 $$로 변환
+    text = text.replace(r"\]", "$$")  # \] 형태의 블록 수식을 $$로 변환
+    
     text = text.replace("**", "").strip()
     return text
 
@@ -53,7 +59,6 @@ def robust_parse(text):
                 opts = ["주관식"]
                 ans = clean_text(a_raw)
             else:
-                # 일반 숫자 1-5를 제거하고 오직 동그라미 기호 [①-⑤]로만 분리합니다.
                 opts = re.findall(r'[①-⑤]\s*[^①-⑤]+', o_raw)
                 opts = [re.sub(r'[①-⑤]\s*', '', opt).strip() for opt in opts]
                 
