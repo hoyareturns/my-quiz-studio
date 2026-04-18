@@ -35,7 +35,6 @@ def show_season_leaderboard(season_res, season_start):
                     st.write(f"{u} ({r['AvgScore']:.1f}점)")
 
 def show_chat_room(player_name):
-    st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
     c1.subheader("우정파괴채팅")
     if c2.button("새로고침", key="chat_refresh"): 
@@ -52,7 +51,7 @@ def show_chat_room(player_name):
         m = st.text_input("메시지 입력", label_visibility="collapsed")
         if st.form_submit_button("전송", use_container_width=True) and m:
             save_chat(player_name, m)
-            st.session_state.chat_jump = True 
+            # database.py에서 get_chats.clear()를 수행하므로 즉시 반영됩니다.
             st.rerun()
 
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
@@ -70,10 +69,6 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
         all_display_cats.remove(default_cat_name)
         all_display_cats.insert(0, default_cat_name)
 
-    if not all_display_cats:
-        st.info("표시할 카테고리가 없습니다.")
-        return
-
     tabs = st.tabs(all_display_cats)
     
     for i, cat in enumerate(all_display_cats):
@@ -89,14 +84,11 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                             with st.spinner("생성 중..."):
                                 try:
                                     text = generate_quiz_with_ai(api_key, q_topic)
-                                    if not text or text.startswith("오류 발생") or text.startswith("AI API 호출 실패"):
-                                        st.error(f"생성 실패: {text}")
-                                    else:
-                                        save_quiz(q_title, "우정퀴즈", text)
-                                        st.success("배포 완료")
-                                        time.sleep(1)
-                                        get_all_quizzes.clear()
-                                        st.rerun()
+                                    save_quiz(q_title, "우정퀴즈", text)
+                                    st.success("배포 완료")
+                                    time.sleep(1)
+                                    get_all_quizzes.clear()
+                                    st.rerun()
                                 except Exception as e:
                                     st.error(f"오류: {e}")
                 st.divider()
@@ -119,7 +111,6 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.user_answers = {}
                         st.session_state.answered_list = []
                         st.session_state.start_time = None
-                        st.session_state.quiz_jump = True 
                         st.rerun()
 
             if st.session_state.selected_quiz:
@@ -128,14 +119,6 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                     render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
 
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
-    st.markdown("<div id='quiz_anchor'></div>", unsafe_allow_html=True)
-    
-    # [수정] height=0 이나 f-string 관련 에러를 방지하기 위해 가장 안정적인 형태로 JS 코드를 구성합니다.
-    if st.session_state.get('quiz_jump'):
-        st.session_state.quiz_jump = False
-        js_code = f"<script>window.parent.document.getElementById('quiz_anchor').scrollIntoView({{behavior: 'smooth'}}); /* {time.time()} */</script>"
-        st.components.v1.html(js_code, height=1)
-
     with st.container(border=True):
         st.markdown(f"**{q_item['Title']}**")
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
@@ -155,9 +138,8 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
         
         elif not st.session_state.quiz_finished:
             parsed = robust_parse(q_item['Content'])
-            
             if not parsed:
-                st.error("데이터 오류: 문제를 불러올 수 없습니다.")
+                st.error("문제를 불러올 수 없습니다.")
             
             is_realtime = "실시간 팩폭" in app_settings.get('feedback_mode', '')
             
@@ -197,6 +179,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             if parsed and st.button("최종 제출", use_container_width=True):
                 wrongs = []
                 for k, it in enumerate(parsed):
+                    # [수정] 최후의 심판 모드 대응: user_answers에 없으면 위젯(in_k)에서 가져옴
                     u = st.session_state.user_answers.get(f"ans_{k}")
                     if u is None or u == "":
                         u = st.session_state.get(f"in_{k}", "")
