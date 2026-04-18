@@ -8,10 +8,7 @@ def clean_text(text):
     text = text.replace(r"^\circ", "°")
     text = text.replace(r"\circ", "°")
     
-    # 수학 수식(LaTeX)이 깨지지 않도록 $와 ^를 지우는 부분을 삭제했습니다.
-    # text = text.replace("$", "") 
-    # text = text.replace("^", "") 
-    
+    # [수정] 수학 수식(LaTeX) 보존을 위해 $와 ^ 기호를 지우는 코드를 삭제했습니다.
     text = text.replace("**", "").strip()
     return text
 
@@ -30,7 +27,6 @@ def robust_parse(text):
         try:
             q_match = re.search(r'(.*?)(?=\[O\])', chunk, re.S)
             o_match = re.search(r'\[O\](.*?)(?=\[A\])', chunk, re.S)
-            # 에러를 일으켰던 오타(\\[E\\])를 원래의 정상적인 코드(\[E\])로 복구했습니다.
             a_match = re.search(r'\[A\](.*?)(?=\[K\]|\[E\]|$)', chunk, re.S)
             k_match = re.search(r'\[K\](.*?)(?=\[E\]|$)', chunk, re.S)
             e_match = re.search(r'\[E\](.*)', chunk, re.S)
@@ -57,6 +53,7 @@ def robust_parse(text):
                 opts = ["주관식"]
                 ans = clean_text(a_raw)
             else:
+                # 일반 숫자 1-5를 제거하고 오직 동그라미 기호 [①-⑤]로만 분리합니다.
                 opts = re.findall(r'[①-⑤]\s*[^①-⑤]+', o_raw)
                 opts = [re.sub(r'[①-⑤]\s*', '', opt).strip() for opt in opts]
                 
@@ -97,8 +94,10 @@ def generate_quiz_with_ai(api_key, q_topic):
         try:
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(full_prompt)
+            
             if response.text:
                 return response.text
+                
         except Exception as e:
             last_error = str(e)
             continue
