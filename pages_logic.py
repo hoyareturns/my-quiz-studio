@@ -35,7 +35,6 @@ def show_season_leaderboard(season_res, season_start):
                     st.write(f"{u} ({r['AvgScore']:.1f}점)")
 
 def show_chat_room(player_name):
-    # 채팅용 상단 앵커
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
     c1.subheader("우정파괴채팅")
@@ -53,7 +52,6 @@ def show_chat_room(player_name):
         m = st.text_input("메시지 입력", label_visibility="collapsed")
         if st.form_submit_button("전송", use_container_width=True) and m:
             save_chat(player_name, m)
-            # 채팅 입력 후 캐시 갱신 및 리런
             get_chats.clear()
             st.rerun()
 
@@ -136,7 +134,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
         with st.expander("이 구역의 지배자들", expanded=True):
             if q_res:
                 s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
-                # [수정1] 에러 방지를 위해 데이터 길이만큼 명시적으로 인덱스 부여
                 s_df.index = range(1, len(s_df) + 1)
                 st.table(s_df[['User', 'Score', 'Duration']].rename(columns={'User':'수험번호', 'Score':'점수', 'Duration':'시간'}))
             else: 
@@ -190,24 +187,51 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             st.write("")
             if parsed and st.button("최종 제출", use_container_width=True):
                 wrongs = []
+                review_list = [] # 오답 노트용 데이터 리스트
+                
                 for k, it in enumerate(parsed):
-                    # [수정2] 최후의 심판 모드 대응: user_answers에 없으면 위젯에서 가져옴
                     u = st.session_state.user_answers.get(f"ans_{k}")
                     if u is None or u == "":
                         u = st.session_state.get(f"in_{k}", "")
                         
                     c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
                     is_c = (str(u).replace(" ","").lower() == str(c).replace(" ","").lower()) if it['o'] == ["주관식"] else (str(u) == str(c))
-                    if not is_c: wrongs.append(it['k'])
+                    
+                    if not is_c: 
+                        wrongs.append(it['k'])
+                        # 틀린 문제의 상세 정보 저장
+                        review_list.append({
+                            'idx': k + 1,
+                            'q': it['q'],
+                            'u': u if u else "미입력",
+                            'c': c,
+                            'e': it['e']
+                        })
                 
                 score = ((len(parsed)-len(wrongs))/len(parsed))*100
                 save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs)
                 st.session_state.quiz_finished = True
                 st.session_state.last_score = score
+                st.session_state.review_data = review_list # 세션에 오답 기록 저장
                 st.rerun()
 
+    # 시험 종료 후 결과 출력 화면
     if st.session_state.quiz_finished:
         st.success(f"최종 점수: {int(st.session_state.last_score)}점")
+        
+        # 오답 노트 출력 로직 추가
+        review_data = st.session_state.get('review_data', [])
+        if review_data:
+            st.error("오답 노트 (틀린 문제 해설)")
+            for rev in review_data:
+                with st.expander(f"Q{rev['idx']}. {rev['q']}", expanded=True):
+                    st.markdown(f"**[내 제출]** {rev['u']}")
+                    st.markdown(f"**[정답]** {rev['c']}")
+                    st.info(f"**[해설]** {rev['e']}")
+        elif int(st.session_state.last_score) == 100:
+            st.info("완벽합니다! 모두 맞혔습니다.")
+
         if st.button("목록으로 돌아가기", use_container_width=True): 
             st.session_state.selected_quiz = ""
+            st.session_state.review_data = [] # 다른 퀴즈를 위해 오답 기록 초기화
             st.rerun()
