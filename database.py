@@ -47,6 +47,7 @@ def save_setting(key, value):
         cell = ws.find(key, in_column=1)
         if cell: ws.update_cell(cell.row, 2, value)
         else: ws.append_row([key, value])
+        get_settings.clear()
 
 @st.cache_data(ttl=10)
 def get_chats():
@@ -56,7 +57,10 @@ def get_chats():
 
 def save_chat(user, msg):
     ws = get_worksheet("Chats")
-    if ws: ws.append_row([user, msg, get_kst_time()])
+    if ws:
+        ws.append_row([user, msg, get_kst_time()])
+        # [핵심 로직] 채팅 작성 즉시 캐시 강제 삭제 (새로고침 불필요)
+        get_chats.clear()
 
 @st.cache_data(ttl=10)
 def get_all_results():
@@ -66,7 +70,9 @@ def get_all_results():
 
 def save_quiz(title, cat, content):
     ws = get_worksheet("Quizzes")
-    if ws: ws.append_row([cat, title, content, get_kst_time()])
+    if ws:
+        ws.append_row([cat, title, content, get_kst_time()])
+        get_all_quizzes.clear()
 
 def update_quiz(old_title, new_cat, new_tit):
     ws = get_worksheet("Quizzes")
@@ -75,19 +81,28 @@ def update_quiz(old_title, new_cat, new_tit):
         if cell:
             ws.update_cell(cell.row, 1, new_cat)
             ws.update_cell(cell.row, 2, new_tit)
-            get_all_quizzes.clear(); return True
+            get_all_quizzes.clear()
+            return True
     return False
 
 def delete_quiz(title):
     ws = get_worksheet("Quizzes")
     if ws:
         cell = ws.find(title, in_column=2)
-        if cell: ws.delete_rows(cell.row); get_all_quizzes.clear(); return True
+        if cell: 
+            ws.delete_rows(cell.row)
+            get_all_quizzes.clear()
+            return True
     return False
 
 def save_result(title, user, score, duration, wrongs):
     res_ws = get_worksheet("Results")
-    if res_ws: res_ws.append_row([title, user, score, round(duration, 2), get_kst_time()])
+    if res_ws: 
+        res_ws.append_row([title, user, score, round(duration, 2), get_kst_time()])
     if wrongs:
         wr_ws = get_worksheet("WrongAnswers")
-        if wr_ws: [wr_ws.append_row([user, k, get_kst_time()]) for k in wrongs]
+        if wr_ws: 
+            [wr_ws.append_row([user, k, get_kst_time()]) for k in wrongs]
+    
+    # [핵심 로직] 성적 저장 즉시 캐시 강제 삭제
+    get_all_results.clear()
