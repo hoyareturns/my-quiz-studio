@@ -36,7 +36,6 @@ def show_season_leaderboard(season_res, season_start):
                     st.write(f"{u} ({r['AvgScore']:.1f}점)")
 
 def show_chat_room(player_name):
-    # 채팅용 상단 앵커
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
     c1.subheader("우정파괴채팅")
@@ -121,7 +120,6 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.user_answers = {}
                         st.session_state.answered_list = []
                         st.session_state.start_time = None
-                        # 퀴즈 선택 시 스크롤 플래그 활성화
                         st.session_state.quiz_jump = True 
                         st.rerun()
 
@@ -131,20 +129,19 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                     render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
 
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
-    # 퀴즈 상세 화면 최상단 앵커 설정
     st.markdown("<div id='quiz_anchor'></div>", unsafe_allow_html=True)
     
-    # 플래그가 True일 때만 자바스크립트로 스크롤 이동
     if st.session_state.get('quiz_jump'):
         components.html(
-            """
+            f"""
             <script>
-                window.parent.document.getElementById('quiz_anchor').scrollIntoView({behavior: 'smooth'});
+                window.parent.document.getElementById('quiz_anchor').scrollIntoView({{behavior: 'smooth'}});
             </script>
             """,
-            height=0
+            height=0,
+            key=f"jump_{time.time()}"
         )
-        st.session_state.quiz_jump = False # 이동 후 소모
+        st.session_state.quiz_jump = False 
 
     with st.container(border=True):
         st.markdown(f"**{q_item['Title']}**")
@@ -207,7 +204,11 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             if parsed and st.button("최종 제출", use_container_width=True):
                 wrongs = []
                 for k, it in enumerate(parsed):
-                    u = st.session_state.user_answers.get(f"ans_{k}", "")
+                    # [핵심 로직] 실시간 모드가 아니면 위젯(in_k)에 있는 답을 끌어옵니다.
+                    u = st.session_state.user_answers.get(f"ans_{k}")
+                    if u is None or u == "":
+                        u = st.session_state.get(f"in_{k}", "")
+                        
                     c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
                     is_c = (str(u).replace(" ","").lower() == str(c).replace(" ","").lower()) if it['o'] == ["주관식"] else (str(u) == str(c))
                     if not is_c: wrongs.append(it['k'])
