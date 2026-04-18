@@ -35,6 +35,8 @@ def show_season_leaderboard(season_res, season_start):
                     st.write(f"{u} ({r['AvgScore']:.1f}점)")
 
 def show_chat_room(player_name):
+    # 채팅용 상단 앵커
+    st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
     c1.subheader("우정파괴채팅")
     if c2.button("새로고침", key="chat_refresh"): 
@@ -51,7 +53,8 @@ def show_chat_room(player_name):
         m = st.text_input("메시지 입력", label_visibility="collapsed")
         if st.form_submit_button("전송", use_container_width=True) and m:
             save_chat(player_name, m)
-            # database.py에서 get_chats.clear()를 수행하므로 즉시 반영됩니다.
+            # 채팅 입력 후 캐시 갱신 및 리런
+            get_chats.clear()
             st.rerun()
 
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
@@ -69,6 +72,10 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
         all_display_cats.remove(default_cat_name)
         all_display_cats.insert(0, default_cat_name)
 
+    if not all_display_cats:
+        st.info("표시할 카테고리가 없습니다.")
+        return
+
     tabs = st.tabs(all_display_cats)
     
     for i, cat in enumerate(all_display_cats):
@@ -84,11 +91,14 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                             with st.spinner("생성 중..."):
                                 try:
                                     text = generate_quiz_with_ai(api_key, q_topic)
-                                    save_quiz(q_title, "우정퀴즈", text)
-                                    st.success("배포 완료")
-                                    time.sleep(1)
-                                    get_all_quizzes.clear()
-                                    st.rerun()
+                                    if not text or text.startswith("오류 발생") or text.startswith("AI API 호출 실패"):
+                                        st.error(f"생성 실패: {text}")
+                                    else:
+                                        save_quiz(q_title, "우정퀴즈", text)
+                                        st.success("배포 완료")
+                                        time.sleep(1)
+                                        get_all_quizzes.clear()
+                                        st.rerun()
                                 except Exception as e:
                                     st.error(f"오류: {e}")
                 st.divider()
@@ -126,7 +136,8 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
         with st.expander("이 구역의 지배자들", expanded=True):
             if q_res:
                 s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
-                s_df.index += 1
+                # [수정1] 에러 방지를 위해 데이터 길이만큼 명시적으로 인덱스 부여
+                s_df.index = range(1, len(s_df) + 1)
                 st.table(s_df[['User', 'Score', 'Duration']].rename(columns={'User':'수험번호', 'Score':'점수', 'Duration':'시간'}))
             else: 
                 st.info("첫 지배자가 되어보세요")
@@ -138,8 +149,9 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
         
         elif not st.session_state.quiz_finished:
             parsed = robust_parse(q_item['Content'])
+            
             if not parsed:
-                st.error("문제를 불러올 수 없습니다.")
+                st.error("데이터 오류: 문제를 불러올 수 없습니다.")
             
             is_realtime = "실시간 팩폭" in app_settings.get('feedback_mode', '')
             
@@ -179,7 +191,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             if parsed and st.button("최종 제출", use_container_width=True):
                 wrongs = []
                 for k, it in enumerate(parsed):
-                    # [수정] 최후의 심판 모드 대응: user_answers에 없으면 위젯(in_k)에서 가져옴
+                    # [수정2] 최후의 심판 모드 대응: user_answers에 없으면 위젯에서 가져옴
                     u = st.session_state.user_answers.get(f"ans_{k}")
                     if u is None or u == "":
                         u = st.session_state.get(f"in_{k}", "")
