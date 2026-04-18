@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import time
 from database import (get_chats, save_chat, save_setting, get_all_quizzes, save_result, save_quiz,
@@ -6,7 +7,7 @@ from database import (get_chats, save_chat, save_setting, get_all_quizzes, save_
 from utils import generate_quiz_with_ai, robust_parse
 
 def show_season_leaderboard(season_res, season_start):
-    """구역별 최강자 리뉴얼: 퀴즈별 1, 2, 3위만 이모지 없이 표시"""
+    """[리뉴얼] 이모지 없이 퀴즈별 상위 3위만 표시"""
     st.subheader("구역별 최강자")
     st.caption(f"이번 시즌 시작일: {season_start[:10]}")
     
@@ -15,23 +16,18 @@ def show_season_leaderboard(season_res, season_start):
         return
 
     df = pd.DataFrame(season_res)
-    # 기록이 존재하는 모든 퀴즈 목록 (중복 제거)
     quiz_titles = df['QuizTitle'].unique()
 
     for title in quiz_titles:
-        st.markdown(f"### {title}")
-        
-        # 해당 퀴즈의 기록만 필터링 후 점수(내림차순), 시간(오름차순)으로 정렬
+        st.markdown(f"#### {title}")
         quiz_df = df[df['QuizTitle'] == title].sort_values(
             by=['Score', 'Duration'], ascending=[False, True]
         ).reset_index(drop=True)
 
-        # 상위 3위까지 텍스트로만 표시
         for i in range(min(3, len(quiz_df))):
             row = quiz_df.iloc[i]
             st.write(f"{i+1}위: {row['User']} ({int(row['Score'])}점 / {row['Duration']}초)")
-        
-        st.write("") # 퀴즈별 간격
+        st.write("") 
 
 def show_chat_room(player_name):
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
@@ -113,6 +109,7 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.user_answers = {}
                         st.session_state.answered_list = []
                         st.session_state.start_time = None
+                        st.session_state.quiz_jump = True # 자동 스크롤 신호 활성
                         st.rerun()
 
             if st.session_state.selected_quiz:
@@ -121,6 +118,19 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                     render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
 
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
+    # 자동 스크롤 앵커 및 실행 로직
+    st.markdown("<div id='quiz_start_anchor'></div>", unsafe_allow_html=True)
+    if st.session_state.get('quiz_jump'):
+        components.html(
+            """
+            <script>
+                window.parent.document.getElementById('quiz_start_anchor').scrollIntoView({behavior: 'smooth'});
+            </script>
+            """,
+            height=0
+        )
+        st.session_state.quiz_jump = False
+
     with st.container(border=True):
         st.markdown(f"**{q_item['Title']}**")
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
@@ -148,11 +158,9 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             for idx, it in enumerate(parsed):
                 st.divider()
                 if it.get('p'):
-                    # 수식 지원을 위해 테두리 박스 + 마크다운 사용
                     with st.container(border=True):
-                        st.markdown(f"**[지문]**\n\n{it['p']}")
+                        st.markdown(f"📄 **[지문]**\n\n{it['p']}")
                 
-                # 수식 충돌 방지를 위해 번호만 볼드 처리
                 st.markdown(f"**Q{idx+1}.** {it['q']}")
                 
                 is_short = it['o'] == ["주관식"]
@@ -175,12 +183,12 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     
                     if is_correct: st.success("정답입니다!")
                     else: st.error(f"오답입니다! (정답: {correct_ans})")
-                    st.markdown(f"**[해설]** {it['e']}")
+                    st.markdown(f"💡 **[해설]** {it['e']}")
 
             st.write("")
             if parsed and st.button("최종 제출", use_container_width=True):
-                wrongs_for_results = [] # 기존 Results 기록용
-                wrongs_for_conquest = [] # 오답 정복 기록용 (문제 원문)
+                wrongs_for_results = []
+                wrongs_for_conquest = []
                 review_list = []
                 
                 for k, it in enumerate(parsed):
@@ -192,8 +200,8 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     is_c = (str(u).replace(" ","").lower() == str(c).replace(" ","").lower()) if it['o'] == ["주관식"] else (str(u) == str(c))
                     
                     if not is_c: 
-                        wrongs_for_results.append(it['k']) # 키워드
-                        wrongs_for_conquest.append(it['q']) # 문제 원문
+                        wrongs_for_results.append(it['k'])
+                        wrongs_for_conquest.append(it['q'])
                         review_list.append({
                             'idx': k + 1, 'q': it['q'], 'u': u if u else "미입력", 'c': c, 'e': it['e']
                         })
@@ -201,7 +209,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                 score = ((len(parsed)-len(review_list))/len(parsed))*100
                 save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs_for_results)
                 
-                # 오답 정복 기록 저장
                 if wrongs_for_conquest:
                     from database import save_wrong_answers
                     save_wrong_answers(q_item['Title'], player_name, wrongs_for_conquest)
@@ -221,7 +228,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     st.markdown(f"**문제:** {rev['q']}")
                     st.markdown(f"**[내 제출]** {rev['u']}")
                     st.markdown(f"**[정답]** {rev['c']}")
-                    st.markdown(f"**[해설]** {rev['e']}")
+                    st.markdown(f"💡 **[해설]** {rev['e']}")
         elif int(st.session_state.last_score) == 100:
             st.info("완벽합니다! 모두 맞혔습니다.")
 
@@ -235,7 +242,6 @@ def show_wrong_answer_review(current_player, all_quizzes):
     st.subheader("오답 정복")
     st.caption("틀린 문제만 다시 풀어보세요. 맞히면 목록에서 사라집니다.")
     
-    # 오답 기록이 남아있는 아이디만 가져오기
     all_users = get_all_users_with_wrongs()
     if not all_users:
         st.info("현재 정복할 오답이 없습니다. 열공 중이시군요!")
@@ -269,7 +275,7 @@ def show_wrong_answer_review(current_player, all_quizzes):
             st.caption(f"출처: {q_title}")
             if q_data.get('p'):
                 with st.container(border=True):
-                    st.markdown(f"**[지문]**\n\n{q_data['p']}")
+                    st.markdown(f"📄 **[지문]**\n\n{q_data['p']}")
             
             st.markdown(f"**Q.** {q_data['q']}")
             
@@ -292,7 +298,6 @@ def show_wrong_answer_review(current_player, all_quizzes):
                 correct = str(q_data['a']) if q_data['o'] == ["주관식"] else q_data['o'][q_data['a']]
                 is_ok = (str(u_ans).replace(" ","").lower() == str(correct).replace(" ","").lower()) if q_data['o'] == ["주관식"] else (str(u_ans) == str(correct))
                 
-                # 맞히면 '정복' 상태로 업데이트
                 if is_ok:
                     update_wrong_answer_status(target_user, q_title, q_text, "정복")
             
