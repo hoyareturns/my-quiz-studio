@@ -4,14 +4,13 @@ import google.generativeai as genai
 def clean_text(text):
     if not text: return ""
     
-    # 특수 기호 변환만 유지하고, 수학 기호($, ^) 삭제 로직은 제거함
     text = text.replace(r"^{\circ}", "°")
     text = text.replace(r"^\circ", "°")
     text = text.replace(r"\circ", "°")
     
-    # 수식 표현을 위해 아래 두 줄을 제거했습니다.
-    # text = text.replace("$", "")
-    # text = text.replace("^", "")
+    # 수학 수식(LaTeX)이 깨지지 않도록 $와 ^를 지우는 부분을 삭제했습니다.
+    # text = text.replace("$", "") 
+    # text = text.replace("^", "") 
     
     text = text.replace("**", "").strip()
     return text
@@ -31,7 +30,8 @@ def robust_parse(text):
         try:
             q_match = re.search(r'(.*?)(?=\[O\])', chunk, re.S)
             o_match = re.search(r'\[O\](.*?)(?=\[A\])', chunk, re.S)
-            a_match = re.search(r'\[A\](.*?)(?=\[K\]|\\[E\]|$)', chunk, re.S)
+            # 에러를 일으켰던 오타(\\[E\\])를 원래의 정상적인 코드(\[E\])로 복구했습니다.
+            a_match = re.search(r'\[A\](.*?)(?=\[K\]|\[E\]|$)', chunk, re.S)
             k_match = re.search(r'\[K\](.*?)(?=\[E\]|$)', chunk, re.S)
             e_match = re.search(r'\[E\](.*)', chunk, re.S)
             
@@ -92,6 +92,7 @@ def generate_quiz_with_ai(api_key, q_topic):
     ]
     
     last_error = None
+    
     for model_name in models_to_try:
         try:
             model = genai.GenerativeModel(model_name)
