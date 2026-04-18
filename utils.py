@@ -4,12 +4,15 @@ import google.generativeai as genai
 def clean_text(text):
     if not text: return ""
     
+    # 특수 기호 변환만 유지하고, 수학 기호($, ^) 삭제 로직은 제거함
     text = text.replace(r"^{\circ}", "°")
     text = text.replace(r"^\circ", "°")
     text = text.replace(r"\circ", "°")
     
-    text = text.replace("$", "")
-    text = text.replace("^", "")
+    # 수식 표현을 위해 아래 두 줄을 제거했습니다.
+    # text = text.replace("$", "")
+    # text = text.replace("^", "")
+    
     text = text.replace("**", "").strip()
     return text
 
@@ -28,7 +31,7 @@ def robust_parse(text):
         try:
             q_match = re.search(r'(.*?)(?=\[O\])', chunk, re.S)
             o_match = re.search(r'\[O\](.*?)(?=\[A\])', chunk, re.S)
-            a_match = re.search(r'\[A\](.*?)(?=\[K\]|\[E\]|$)', chunk, re.S)
+            a_match = re.search(r'\[A\](.*?)(?=\[K\]|\\[E\]|$)', chunk, re.S)
             k_match = re.search(r'\[K\](.*?)(?=\[E\]|$)', chunk, re.S)
             e_match = re.search(r'\[E\](.*)', chunk, re.S)
             
@@ -54,7 +57,6 @@ def robust_parse(text):
                 opts = ["주관식"]
                 ans = clean_text(a_raw)
             else:
-                # [핵심 수정] 일반 숫자 1-5를 제거하고 오직 동그라미 기호 [①-⑤]로만 분리합니다.
                 opts = re.findall(r'[①-⑤]\s*[^①-⑤]+', o_raw)
                 opts = [re.sub(r'[①-⑤]\s*', '', opt).strip() for opt in opts]
                 
@@ -90,15 +92,12 @@ def generate_quiz_with_ai(api_key, q_topic):
     ]
     
     last_error = None
-    
     for model_name in models_to_try:
         try:
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(full_prompt)
-            
             if response.text:
                 return response.text
-                
         except Exception as e:
             last_error = str(e)
             continue
