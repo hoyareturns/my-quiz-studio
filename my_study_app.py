@@ -105,7 +105,7 @@ def main():
     if view_mode == "구역별 최강자":
         show_season_leaderboard(season_res, season_start)
     elif view_mode == "오답 정복":
-        # 퀴즈 데이터와 parse 함수를 넘겨줌
+        # 신규 파일의 함수 호출
         show_wrong_answer_conquest(st.session_state.player_name, get_all_quizzes(), robust_parse)
     elif view_mode == "우정파괴채팅": 
         show_chat_room(st.session_state.player_name)
