@@ -190,8 +190,10 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
 
             st.write("")
             if parsed and st.button("최종 제출", use_container_width=True):
-                wrongs = []
+                wrongs_indices = [] # 기존 결과 저장용 (index)
+                wrongs_texts = []   # 신규 오답 정복용 (문제 텍스트)
                 review_list = []
+                
                 for k, it in enumerate(parsed):
                     u = st.session_state.user_answers.get(f"ans_{k}")
                     if u is None or u == "":
@@ -202,6 +204,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     
                     if not is_c: 
                         wrongs.append(it['k'])
+                        wrongs_texts.append(it['q'])
                         review_list.append({
                             'idx': k + 1,
                             'q': it['q'],
@@ -211,7 +214,11 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                         })
                 
                 score = ((len(parsed)-len(wrongs))/len(parsed))*100
-                save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs)
+                save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs_indices)
+                if wrongs_texts:
+                    from database import save_wrong_answers
+                    save_wrong_answers(q_item['Title'], player_name, wrongs_texts)
+                
                 st.session_state.quiz_finished = True
                 st.session_state.last_score = score
                 st.session_state.review_data = review_list
