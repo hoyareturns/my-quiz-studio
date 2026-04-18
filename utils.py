@@ -8,12 +8,15 @@ def clean_text(text):
     text = text.replace(r"^\circ", "°")
     text = text.replace(r"\circ", "°")
     
-    # [새로 추가된 핵심 로직] AI가 수식 기호를 텍스트로 뭉개는 것을 강제 보정
-    text = text.replace(r"\$", "$")   # 역슬래시가 붙은 $ 기호 복구
-    text = text.replace(r"\(", "$")   # \( 형태의 인라인 수식을 $로 변환
-    text = text.replace(r"\)", "$")   # \) 형태의 인라인 수식을 $로 변환
-    text = text.replace(r"\[", "$$")  # \[ 형태의 블록 수식을 $$로 변환
-    text = text.replace(r"\]", "$$")  # \] 형태의 블록 수식을 $$로 변환
+    # [수정] 수식을 망가뜨리던 아래 두 줄($, ^ 기호 삭제)을 제거했습니다.
+    # text = text.replace("$", "")
+    # text = text.replace("^", "")
+    
+    # [추가] 노트북LM 등 외부 AI가 수식에 씌우는 백틱(`)과 잘못된 이스케이프 기호 복구
+    text = text.replace("`", "")
+    text = text.replace(r"\$", "$")
+    text = text.replace(r"\(", "$").replace(r"\)", "$")
+    text = text.replace(r"\[", "$$").replace(r"\]", "$$")
     
     text = text.replace("**", "").strip()
     return text
@@ -59,6 +62,7 @@ def robust_parse(text):
                 opts = ["주관식"]
                 ans = clean_text(a_raw)
             else:
+                # [핵심 수정] 일반 숫자 1-5를 제거하고 오직 동그라미 기호 [①-⑤]로만 분리합니다.
                 opts = re.findall(r'[①-⑤]\s*[^①-⑤]+', o_raw)
                 opts = [re.sub(r'[①-⑤]\s*', '', opt).strip() for opt in opts]
                 
@@ -101,7 +105,7 @@ def generate_quiz_with_ai(api_key, q_topic):
             response = model.generate_content(full_prompt)
             
             if response.text:
-                return response.text
+                return response.text 
                 
         except Exception as e:
             last_error = str(e)
