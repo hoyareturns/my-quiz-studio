@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 def show_personal_records(current_player, all_results):
-    st.subheader("📊 개인 성적표")
+    st.subheader(" 개인 성적표")
     st.caption("나의 퀴즈 기록과 점수 분포를 확인하세요.")
 
     if not all_results:
@@ -43,15 +43,15 @@ def show_personal_records(current_player, all_results):
     # 상단 요약 지표 (st.metric 사용)
     st.write("")
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("💯 100점", f"{s100}회")
-    col2.metric("🥇 90~99점", f"{s90}회")
-    col3.metric("🥈 80~89점", f"{s80}회")
-    col4.metric("📉 기타", f"{s_low}회")
+    col1.metric(" 100점", f"{s100}회")
+    col2.metric(" 90~99점", f"{s90}회")
+    col3.metric(" 80~89점", f"{s80}회")
+    col4.metric(" 기타", f"{s_low}회")
 
     st.divider()
 
     # --- 상세 목록 ---
-    st.markdown(f"#### 📑 {target_user}님의 상세 풀이 이력")
+    st.markdown(f"#### {target_user}님의 상세 풀이 이력")
     if not user_df.empty:
         # 최신순 정렬 (Time 기준)
         display_df = user_df.sort_values(by='Time', ascending=False).reset_index(drop=True)
