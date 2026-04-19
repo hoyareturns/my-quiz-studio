@@ -13,7 +13,7 @@ def show_personal_records(current_player, all_results):
     df = pd.DataFrame(all_results)
     
     # 1. 아이디 목록 추출 (성적 기록이 있는 아이디만)
-    all_users = sorted(df['User'].unique().tolist())
+    all_users = sorted([str(u) for u in df['User'].unique() if u])
     
     # 2. 아이디 선택 드롭박스 (현재 로그인 유저를 기본값으로)
     default_idx = all_users.index(current_player) if current_player in all_users else 0
