@@ -9,6 +9,8 @@ from admin import show_admin_sidebar
 from pages_logic import show_season_leaderboard, show_chat_room, show_quiz_area
 from my_study_app_utils import get_kst_time, generate_qr_code, apply_custom_style
 from wrong_answer_logic import show_wrong_answer_conquest
+from personal_record_logic import show_personal_records
+from database import get_all_results # 결과 데이터를 가져오기 위해 추가 확인
 
 def main():
     st.set_page_config(
@@ -102,15 +104,18 @@ def main():
         if k not in st.session_state: 
             st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump'] else None
 
+    # main() 함수 내 view_mode 분기 부분 수정
     if view_mode == "구역별 최강자":
         show_season_leaderboard(season_res, season_start)
     elif view_mode == "오답 정복":
-        # 신규 파일의 함수 호출
-        show_wrong_answer_conquest(st.session_state.player_name, get_all_quizzes(), robust_parse)
+        from pages_logic import show_wrong_answer_review
+        show_wrong_answer_review(st.session_state.player_name, get_all_quizzes())
+    elif view_mode == "개인 기록":  # <-- 신규 추가
+        show_personal_records(st.session_state.player_name, get_all_results())
     elif view_mode == "우정파괴채팅": 
         show_chat_room(st.session_state.player_name)
     else:
         show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse)
-
+        
 if __name__ == "__main__":
     main()
