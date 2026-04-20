@@ -2,8 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import time
-from database import (get_chats, save_chat, save_setting, get_all_quizzes, save_result, save_quiz,
-                      get_wrong_answers_by_user, update_wrong_answer_status, get_all_users_with_wrongs)
+from database import get_chats, save_chat, save_result, save_quiz, save_wrong_answers
 from utils import generate_quiz_with_ai, robust_parse
 
 def show_season_leaderboard(season_res, season_start):
@@ -29,10 +28,11 @@ def show_season_leaderboard(season_res, season_start):
             st.write(f"{i+1}위: {row['User']} ({int(row['Score'])}점 / {row['Duration']}초)")
         st.write("") 
 
-def show_chat_room(player_name):
+def show_chat_room(player_name, ui_labels):
+    """채팅방: ui_labels를 받아 상단 타이틀을 동적으로 변경"""
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
-    c1.subheader("우정파괴채팅")
+    c1.subheader(ui_labels["TAB_CHAT"])
     if c2.button("새로고침", key="chat_refresh"): 
         get_chats.clear()
         st.rerun()
@@ -49,40 +49,52 @@ def show_chat_room(player_name):
             save_chat(player_name, m)
             st.rerun()
 
-def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
-    cats_with_quizzes = set(q.get('Category', '미분류') for q in quizzes)
+def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse, current_mode, ui_labels):
+    """현재 접속 모드(work/personal)에 따라 퀴즈를 필터링하여 보여줍니다."""
+    
+    # --- [핵심] 모드별 퀴즈 필터링 ---
+    if current_mode == "work":
+        filtered_quizzes = [q for q in quizzes if str(q.get('IsWork', 'X')) == 'O']
+    else:
+        filtered_quizzes = [q for q in quizzes if str(q.get('IsWork', 'X')) != 'O']
+        
+    cats_with_quizzes = set(q.get('Category', '미분류') for q in filtered_quizzes)
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
-    candidates = list(dict.fromkeys(custom_cats + list(cats_with_quizzes) + ["우정퀴즈"]))
+    
+    def_cat = ui_labels["DEFAULT_CATEGORY"]
+    candidates = list(dict.fromkeys(custom_cats + list(cats_with_quizzes) + [def_cat]))
     
     all_display_cats = []
     for cat in candidates:
-        if cat == "우정퀴즈" or cat in cats_with_quizzes:
+        if cat == def_cat or cat in cats_with_quizzes:
             all_display_cats.append(cat)
     
-    default_cat_name = app_settings.get("default_category", "우정퀴즈")
-    if default_cat_name in all_display_cats:
-        all_display_cats.remove(default_cat_name)
-        all_display_cats.insert(0, default_cat_name)
+    if def_cat in all_display_cats:
+        all_display_cats.remove(def_cat)
+        all_display_cats.insert(0, def_cat)
 
     if not all_display_cats:
-        st.info("표시할 카테고리가 없습니다.")
+        st.info("현재 모드에 표시할 퀴즈 카테고리가 없습니다.")
         return
 
     tabs = st.tabs(all_display_cats)
     for i, cat in enumerate(all_display_cats):
         with tabs[i]:
             st.write("") 
-            if cat == "우정퀴즈":
-                with st.expander("나만의 우정 파괴 퀴즈 만들기", expanded=False):
-                    q_title = st.text_input("퀴즈 제목", placeholder="제목 입력", key="new_q_title")
-                    q_topic = st.text_input("퀴즈 주제", placeholder="주제 입력", key="new_q_topic")
-                    if st.button("AI 출제 시작", use_container_width=True):
+            # AI 퀴즈 생성기는 기본 카테고리(개인:우정퀴즈, 업무:공통 역량) 탭에서만 활성화
+            if cat == def_cat:
+                with st.expander("나만의 AI 퀴즈 만들기", expanded=False):
+                    q_title = st.text_input("퀴즈 제목", placeholder="제목 입력", key=f"new_q_title_{i}")
+                    q_topic = st.text_input("퀴즈 주제", placeholder="주제 입력", key=f"new_q_topic_{i}")
+                    if st.button("AI 출제 시작", use_container_width=True, key=f"btn_ai_{i}"):
                         api_key = st.secrets.get("GEMINI_API_KEY")
                         if api_key and q_title and q_topic:
                             with st.spinner("생성 중..."):
                                 try:
                                     text = generate_quiz_with_ai(api_key, q_topic)
-                                    save_quiz(q_title, "우정퀴즈", text)
+                                    is_work_flag = (current_mode == "work")
+                                    from database import get_all_quizzes
+                                    save_quiz(def_cat, q_title, text, is_work=is_work_flag)
                                     st.success("배포 완료")
                                     time.sleep(1)
                                     get_all_quizzes.clear()
@@ -91,8 +103,10 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                                     st.error(f"오류: {e}")
                 st.divider()
 
-            cat_qs = [q for q in quizzes if q.get('Category') == cat]
-            if cat == "우정퀴즈":
+            cat_qs = [q for q in filtered_quizzes if q.get('Category') == cat]
+            
+            # 정렬 기준
+            if cat == def_cat:
                 pop_counts = pd.DataFrame(season_res)['QuizTitle'].value_counts().to_dict() if season_res else {}
                 cat_qs = sorted(cat_qs, key=lambda x: pop_counts.get(x['Title'], 0), reverse=True)
             else:
@@ -109,16 +123,16 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
                         st.session_state.user_answers = {}
                         st.session_state.answered_list = []
                         st.session_state.start_time = None
-                        st.session_state.quiz_jump = True # 자동 스크롤 신호 활성
+                        st.session_state.quiz_jump = True
                         st.rerun()
 
             if st.session_state.selected_quiz:
-                selected_q_item = next((q for q in quizzes if q['Title'] == st.session_state.selected_quiz), None)
+                selected_q_item = next((q for q in filtered_quizzes if q['Title'] == st.session_state.selected_quiz), None)
                 if selected_q_item and selected_q_item.get('Category') == cat:
                     render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
 
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
-    # 자동 스크롤 앵커 및 실행 로직
+    # 자동 스크롤 기능
     st.markdown("<div id='quiz_start_anchor'></div>", unsafe_allow_html=True)
     if st.session_state.get('quiz_jump'):
         components.html(
@@ -209,8 +223,8 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                 score = ((len(parsed)-len(review_list))/len(parsed))*100
                 save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs_for_results)
                 
+                # 오답 시트에 기록
                 if wrongs_for_conquest:
-                    from database import save_wrong_answers
                     save_wrong_answers(q_item['Title'], player_name, wrongs_for_conquest)
                 
                 st.session_state.quiz_finished = True
@@ -235,72 +249,4 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
         if st.button("목록으로 돌아가기", use_container_width=True): 
             st.session_state.selected_quiz = ""
             st.session_state.review_data = []
-            st.rerun()
-
-def show_wrong_answer_review(current_player, all_quizzes):
-    """오답 정복 화면: 오답이 있는 유저만 드롭박스로 선택 가능"""
-    st.subheader("오답 정복")
-    st.caption("틀린 문제만 다시 풀어보세요. 맞히면 목록에서 사라집니다.")
-    
-    all_users = get_all_users_with_wrongs()
-    if not all_users:
-        st.info("현재 정복할 오답이 없습니다. 열공 중이시군요!")
-        return
-        
-    target_user = st.selectbox("리뷰할 아이디 선택", all_users, 
-                               index=all_users.index(current_player) if current_player in all_users else 0)
-    
-    wrong_records = get_wrong_answers_by_user(target_user)
-    
-    if not wrong_records:
-        st.success(f"🎉 {target_user}님은 모든 오답을 정복했습니다!")
-        return
-
-    st.write(f"현재 **{len(wrong_records)}개**의 오답이 남아있습니다.")
-    
-    with st.form("wrong_review_form"):
-        user_inputs = {}
-        for idx, wr in enumerate(wrong_records):
-            q_title = wr.get('QuizTitle')
-            q_text = wr.get('QuestionText')
-            
-            parent_quiz = next((q for q in all_quizzes if q['Title'] == q_title), None)
-            if not parent_quiz: continue
-            
-            parsed = robust_parse(parent_quiz['Content'])
-            q_data = next((p for p in parsed if p['q'] == q_text), None)
-            if not q_data: continue
-
-            st.divider()
-            st.caption(f"출처: {q_title}")
-            if q_data.get('p'):
-                with st.container(border=True):
-                    st.markdown(f"📄 **[지문]**\n\n{q_data['p']}")
-            
-            st.markdown(f"**Q.** {q_data['q']}")
-            
-            is_short = q_data['o'] == ["주관식"]
-            if is_short:
-                user_inputs[idx] = st.text_input("답 입력", key=f"wr_in_{idx}")
-            else:
-                user_inputs[idx] = st.radio("보기", q_data['o'], index=None, key=f"wr_in_{idx}", label_visibility="collapsed")
-        
-        if st.form_submit_button("오답 정복 시도", use_container_width=True):
-            for idx, wr in enumerate(wrong_records):
-                u_ans = user_inputs.get(idx)
-                if not u_ans: continue
-                
-                q_title = wr.get('QuizTitle')
-                q_text = wr.get('QuestionText')
-                parent_quiz = next((q for q in all_quizzes if q['Title'] == q_title), None)
-                q_data = next((p for p in robust_parse(parent_quiz['Content']) if p['q'] == q_text), None)
-                
-                correct = str(q_data['a']) if q_data['o'] == ["주관식"] else q_data['o'][q_data['a']]
-                is_ok = (str(u_ans).replace(" ","").lower() == str(correct).replace(" ","").lower()) if q_data['o'] == ["주관식"] else (str(u_ans) == str(correct))
-                
-                if is_ok:
-                    update_wrong_answer_status(target_user, q_title, q_text, "정복")
-            
-            st.success("채점이 완료되었습니다!")
-            time.sleep(1)
             st.rerun()

@@ -33,18 +33,27 @@ EXTERNAL_PROMPT_TEMPLATE = """아래 형식에 맞춰 10문제를 출제해.
 [K] 키워드
 [E] 정답에 대한 구체적인 설명과 개념 풀이"""
 
-# 앱 고정 옵션
-
-# --- 앱 UI 이름표 (사무용 모드) ---
-APP_TITLE = "스마트 평가 센터"      # 기존: 우정 파괴소
-TAB_QUIZ = "역량 점검"             # 기존: 퀴즈 선택
-TAB_REVIEW = "오답 정복"           # 유지
-TAB_RECORDS = "개인 기록"          # 유지
-TAB_RANK = "우수 성취자"           # 기존: 구역별 최강자
-TAB_CHAT = "업무 토론방"           # 기존: 우정파괴채팅
-DEFAULT_CATEGORY = "공통 역량"     # 기존: 우정퀴즈 (기본 표시 카테고리)
-
-# 메뉴 탭 순서 설정 (위에서 만든 변수들을 활용)
-VIEW_OPTIONS = [TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT]
-# VIEW_OPTIONS = ["퀴즈 선택", "오답 정복", "개인 기록", "구역별 최강자", "우정파괴채팅"]
 FEEDBACK_MODES = ["실시간 팩폭", "최후의 심판"]
+
+def get_ui_labels(mode="personal"):
+    """접속 모드에 따라 앱의 이름표(UI 텍스트)를 반환합니다."""
+    if mode == "work":
+        return {
+            "APP_TITLE": "스마트 평가 센터",
+            "TAB_QUIZ": "역량 점검",
+            "TAB_REVIEW": "오답 정복",
+            "TAB_RECORDS": "개인 기록",
+            "TAB_RANK": "우수 성취자",
+            "TAB_CHAT": "업무 토론방",
+            "DEFAULT_CATEGORY": "공통 역량"
+        }
+    else:
+        return {
+            "APP_TITLE": "우정 파괴소",
+            "TAB_QUIZ": "퀴즈 선택",
+            "TAB_REVIEW": "오답 정복",
+            "TAB_RECORDS": "개인 기록",
+            "TAB_RANK": "구역별 최강자",
+            "TAB_CHAT": "우정파괴채팅",
+            "DEFAULT_CATEGORY": "우정퀴즈"
+        }

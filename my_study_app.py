@@ -5,8 +5,8 @@ import random
 from database import get_all_quizzes, get_all_results, get_settings, get_chats, save_quiz
 from utils import robust_parse, generate_quiz_with_ai
 
-# [수정] prompts.py에서 이름표 변수들을 모두 불러옵니다.
-from prompts import VIEW_OPTIONS, APP_TITLE, TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, DEFAULT_CATEGORY
+# [신규] prompts.py에서 모드별 이름표 함수를 불러옵니다.
+from prompts import get_ui_labels 
 
 from admin import show_admin_sidebar
 from pages_logic import show_season_leaderboard, show_chat_room, show_quiz_area
@@ -15,8 +15,21 @@ from wrong_answer_logic import show_wrong_answer_conquest
 from personal_record_logic import show_personal_records
 
 def main():
+    # 1. URL 파라미터에서 모드 읽기 (기본값은 personal)
+    current_mode = st.query_params.get("mode", "personal")
+    ui_labels = get_ui_labels(current_mode)
+    
+    # 2. 탭 메뉴 구성 (선택된 모드에 맞게 이름이 바뀜)
+    VIEW_OPTIONS = [
+        ui_labels["TAB_QUIZ"], 
+        ui_labels["TAB_REVIEW"], 
+        ui_labels["TAB_RECORDS"], 
+        ui_labels["TAB_RANK"], 
+        ui_labels["TAB_CHAT"]
+    ]
+
     st.set_page_config(
-        page_title=APP_TITLE, # [수정] 변수 적용
+        page_title=ui_labels["APP_TITLE"],
         page_icon="logo.png",
         layout="centered"
     )
@@ -72,18 +85,26 @@ def main():
 
     with st.sidebar:
         show_admin_sidebar(app_settings, get_kst_time)
+        
+        # 3. QR 코드 출력부 (모드에 따라 링크 변경)
         st.divider()
+        st.caption("📱 스마트폰 접속용 QR코드")
         
-        # 본인의 Streamlit 앱 주소로 변경해 주세요!
-        app_url = "https://my-quiz-studio.streamlit.app" 
+        # ★ 주의: 실제 사용하시는 스트림릿 앱 주소로 변경해 주세요!
+        base_url = "https://my-quiz-studio.streamlit.app" 
+        target_url = f"{base_url}?mode={current_mode}"
         
-        qr_img = generate_qr_code(app_url)
+        if current_mode == "work":
+            st.info("💼 업무용 링크")
+        else:
+            st.info("🏠 개인용 링크")
+            
+        qr_img = generate_qr_code(target_url)
         st.image(qr_img, width=150)
 
     c1, c2 = st.columns([1, 1])
     with c1:
-        # [수정] 변수 적용
-        st.markdown(f'<p class="title-text">{APP_TITLE}</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="title-text">{ui_labels["APP_TITLE"]}</p>', unsafe_allow_html=True)
     with c2:
         st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name)
 
@@ -91,16 +112,13 @@ def main():
     st.write("")
     st.write("")
 
-    # [수정] 기본 탭 설정
-    default_view = app_settings.get('default_view', TAB_QUIZ)
-    def_idx = VIEW_OPTIONS.index(default_view) if default_view in VIEW_OPTIONS else 0
-
+    # 4. 탭 생성 (자동으로 모드별 텍스트 적용됨)
     view_mode = st.radio(
         "탭", 
         VIEW_OPTIONS, 
         horizontal=True, 
         label_visibility="collapsed", 
-        index=def_idx,
+        index=0,
         key="main_tab_selector"
     )
     
@@ -109,21 +127,23 @@ def main():
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
     season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
 
+    # 세션 상태 초기화
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump']:
         if k not in st.session_state: 
             st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump'] else None
 
-    # [수정] 분기 조건문 변수 적용
-    if view_mode == TAB_RANK:
+    # 5. 분기 조건문 (ui_labels 활용)
+    if view_mode == ui_labels["TAB_RANK"]:
         show_season_leaderboard(season_res, season_start)
-    elif view_mode == TAB_REVIEW:
+    elif view_mode == ui_labels["TAB_REVIEW"]:
         show_wrong_answer_conquest(st.session_state.player_name, get_all_quizzes(), robust_parse)
-    elif view_mode == TAB_RECORDS:
+    elif view_mode == ui_labels["TAB_RECORDS"]:
         show_personal_records(st.session_state.player_name, get_all_results())
-    elif view_mode == TAB_CHAT:
-        show_chat_room(st.session_state.player_name)
+    elif view_mode == ui_labels["TAB_CHAT"]:
+        show_chat_room(st.session_state.player_name, ui_labels)
     else:
-        show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse)
+        # pages_logic.py에 현재 모드(current_mode)와 이름표(ui_labels)를 함께 넘겨줍니다.
+        show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse, current_mode, ui_labels)
 
 if __name__ == "__main__":
     if "player_name" not in st.session_state:
