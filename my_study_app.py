@@ -90,7 +90,7 @@ def main():
         show_admin_sidebar(app_settings, get_kst_time)
         
         st.divider()
-        st.caption("📱 모드별 접속 QR코드")
+        st.caption(" 모드별 접속 QR코드")
         
         # 실제 앱 주소 (배포된 주소에 맞게 수정하세요)
         base_url = "https://my-quiz-studio.streamlit.app" 
@@ -101,12 +101,12 @@ def main():
         with col1:
             qr_p = generate_qr_code(f"{base_url}?mode=personal")
             st.image(qr_p, use_container_width=True)
-            st.markdown('<p class="qr-caption">🏠 개인용</p>', unsafe_allow_html=True)
+            st.markdown('<p class="qr-caption"> 개인용</p>', unsafe_allow_html=True)
             
         with col2:
             qr_w = generate_qr_code(f"{base_url}?mode=work")
             st.image(qr_w, use_container_width=True)
-            st.markdown('<p class="qr-caption">💼 업무용</p>', unsafe_allow_html=True)
+            st.markdown('<p class="qr-caption"> 업무용</p>', unsafe_allow_html=True)
         
         st.write("")
         if current_mode == "work":
