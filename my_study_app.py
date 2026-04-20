@@ -4,17 +4,19 @@ import time
 import random
 from database import get_all_quizzes, get_all_results, get_settings, get_chats, save_quiz
 from utils import robust_parse, generate_quiz_with_ai
-from prompts import VIEW_OPTIONS
+
+# [수정] prompts.py에서 이름표 변수들을 모두 불러옵니다.
+from prompts import VIEW_OPTIONS, APP_TITLE, TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, DEFAULT_CATEGORY
+
 from admin import show_admin_sidebar
 from pages_logic import show_season_leaderboard, show_chat_room, show_quiz_area
 from my_study_app_utils import get_kst_time, generate_qr_code, apply_custom_style
 from wrong_answer_logic import show_wrong_answer_conquest
 from personal_record_logic import show_personal_records
-from database import get_all_results # 결과 데이터를 가져오기 위해 추가 확인
 
 def main():
     st.set_page_config(
-        page_title="우정 파괴소",
+        page_title=APP_TITLE, # [수정] 변수 적용
         page_icon="logo.png",
         layout="centered"
     )
@@ -39,44 +41,42 @@ def main():
             padding: 2px 8px !important;
             font-size: 0.9rem !important;
             border: none !important;
-            border-bottom: 1px solid #ddd !important;
+            border-bottom: 1px solid #ccc !important;
             border-radius: 0 !important;
+            background-color: transparent !important;
+        }
+        div[data-testid="stTextInput"] input:focus {
+            border-bottom: 2px solid #ff4b4b !important;
+            box-shadow: none !important;
         }
         
         .title-text {
-            font-size: 1.6rem !important;
+            font-size: 2.2rem;
             font-weight: 800;
-            margin: 0 !important;
-            white-space: nowrap;
+            color: #ff4b4b;
+            margin-bottom: 0;
+            padding-bottom: 0;
+            line-height: 1.2;
+        }
+        
+        div[data-testid="stRadio"] > div {
+            display: flex;
+            flex-direction: row;
+            gap: 15px;
+            justify-content: center;
         }
         </style>
     """, unsafe_allow_html=True)
 
     app_settings = get_settings()
-    APP_URL = "https://hoya-quiz-studio.streamlit.app"
-    
+
     with st.sidebar:
         show_admin_sidebar(app_settings, get_kst_time)
-        st.divider()
-        st.caption("친구 초대용 QR코드")
-        st.image(generate_qr_code(APP_URL), width=100)
 
-    if 'player_name' not in st.session_state or not st.session_state.player_name:
-        results = get_all_results()
-        chats = get_chats()
-        existing_users = set(str(r.get('User')) for r in results if r.get('User'))
-        existing_users.update(set(str(c.get('User')) for c in chats if c.get('User')))
-                
-        while True:
-            rand_num = random.randint(1000, 9999)
-            new_id = f"우정파괴자{rand_num}"
-            if new_id not in existing_users:
-                st.session_state.player_name = new_id
-                break
-
-    c1, c2 = st.columns([0.45, 0.55])
+    c1, c2 = st.columns([1, 1])
     with c1:
-        st.markdown('<p class="title-text">우정 파괴소</p>', unsafe_allow_html=True)
+        # [수정] 변수 적용
+        st.markdown(f'<p class="title-text">{APP_TITLE}</p>', unsafe_allow_html=True)
     with c2:
         st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name)
 
@@ -84,7 +84,8 @@ def main():
     st.write("")
     st.write("")
 
-    default_view = app_settings.get('default_view', "퀴즈 선택")
+    # [수정] 기본 탭 설정
+    default_view = app_settings.get('default_view', TAB_QUIZ)
     def_idx = VIEW_OPTIONS.index(default_view) if default_view in VIEW_OPTIONS else 0
 
     view_mode = st.radio(
@@ -101,23 +102,23 @@ def main():
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
     season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
 
-    # 세션 상태 초기화 리스트에 quiz_jump 추가
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump']:
         if k not in st.session_state: 
             st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump'] else None
 
-    # main() 함수 내 view_mode 분기 부분 수정
-    if view_mode == "구역별 최강자":
+    # [수정] 분기 조건문 변수 적용
+    if view_mode == TAB_RANK:
         show_season_leaderboard(season_res, season_start)
-    elif view_mode == "오답 정복":
-        from pages_logic import show_wrong_answer_review
-        show_wrong_answer_review(st.session_state.player_name, get_all_quizzes())
-    elif view_mode == "개인 기록":  # <-- 신규 추가
+    elif view_mode == TAB_REVIEW:
+        show_wrong_answer_conquest(st.session_state.player_name, get_all_quizzes(), robust_parse)
+    elif view_mode == TAB_RECORDS:
         show_personal_records(st.session_state.player_name, get_all_results())
-    elif view_mode == "우정파괴채팅": 
+    elif view_mode == TAB_CHAT:
         show_chat_room(st.session_state.player_name)
     else:
         show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse)
-        
+
 if __name__ == "__main__":
+    if "player_name" not in st.session_state:
+        st.session_state.player_name = f"Guest_{random.randint(1000,9999)}"
     main()
