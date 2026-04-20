@@ -72,6 +72,13 @@ def main():
 
     with st.sidebar:
         show_admin_sidebar(app_settings, get_kst_time)
+        st.divider()
+        
+        # 본인의 Streamlit 앱 주소로 변경해 주세요!
+        app_url = "https://my-quiz-studio.streamlit.app" 
+        
+        qr_img = generate_qr_code(app_url)
+        st.image(qr_img, width=150)
 
     c1, c2 = st.columns([1, 1])
     with c1:

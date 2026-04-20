@@ -5,7 +5,7 @@ import time
 from database import get_wrong_answers_by_user, update_wrong_answer_status, get_all_users_with_wrongs
 
 def show_wrong_answer_conquest(current_player, all_quizzes, robust_parse):
-    st.subheader("🔥 오답 정복")
+    st.subheader(" 오답 정복")
     st.caption("틀린 문제만 다시 풀어보세요. 맞히면 목록에서 사라집니다.")
 
     # 오답 기록이 있는 아이디만 드롭박스 표시
