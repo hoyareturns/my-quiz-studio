@@ -57,3 +57,4 @@ def get_ui_labels(mode="personal"):
             "TAB_CHAT": "우정파괴채팅",
             "DEFAULT_CATEGORY": "우정퀴즈"
         }
+    

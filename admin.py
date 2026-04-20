@@ -1,8 +1,9 @@
 import streamlit as st
 from database import (get_all_quizzes, save_setting, save_chat, get_worksheet, 
                       update_quiz, delete_quiz, save_quiz)
-# [복구됨] VIEW_OPTIONS 다시 임포트
-from prompts import VIEW_OPTIONS, FEEDBACK_MODES, EXTERNAL_PROMPT_TEMPLATE
+
+# [수정] 하드코딩 변수 대신 get_ui_labels 함수를 불러옵니다.
+from prompts import get_ui_labels, FEEDBACK_MODES, EXTERNAL_PROMPT_TEMPLATE
 
 def show_admin_sidebar(app_settings, get_kst_time):
     ADMIN_PASSWORD = "1234"
@@ -25,15 +26,25 @@ def show_admin_sidebar(app_settings, get_kst_time):
         
         st.caption("앱 기본 설정")
         
-        # [복구됨] 처음 열릴 탭 선택 기능
-        default_view = st.selectbox("처음 열릴 탭", VIEW_OPTIONS, 
-                                    index=VIEW_OPTIONS.index(app_settings.get('default_view', VIEW_OPTIONS[0])) if app_settings.get('default_view') in VIEW_OPTIONS else 0)
+        # --- [핵심 수정] get_ui_labels를 이용해 선택 옵션을 동적으로 생성 ---
+        p_labels = get_ui_labels("personal")
+        w_labels = get_ui_labels("work")
+        
+        # 두 모드의 탭 이름을 하나로 합치고, 중복(오답 정복, 개인 기록 등)을 제거합니다.
+        dynamic_view_options = list(dict.fromkeys([
+            p_labels["TAB_QUIZ"], p_labels["TAB_REVIEW"], p_labels["TAB_RECORDS"], p_labels["TAB_RANK"], p_labels["TAB_CHAT"],
+            w_labels["TAB_QUIZ"], w_labels["TAB_REVIEW"], w_labels["TAB_RECORDS"], w_labels["TAB_RANK"], w_labels["TAB_CHAT"]
+        ]))
+        
+        default_view = st.selectbox("처음 열릴 탭", dynamic_view_options, 
+                                    index=dynamic_view_options.index(app_settings.get('default_view', dynamic_view_options[0])) if app_settings.get('default_view') in dynamic_view_options else 0)
+        # ---------------------------------------------------------------
         
         f_mode = st.selectbox("피드백 모드", FEEDBACK_MODES, 
                               index=FEEDBACK_MODES.index(app_settings.get('feedback_mode', '실시간 팩폭')) if app_settings.get('feedback_mode') in FEEDBACK_MODES else 0)
         
         if st.button("설정 저장", use_container_width=True):
-            save_setting("default_view", default_view) # 설정 저장 추가
+            save_setting("default_view", default_view)
             save_setting("feedback_mode", f_mode)
             st.success("저장됨")
         
