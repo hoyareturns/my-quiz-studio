@@ -58,13 +58,15 @@ def main():
             padding-bottom: 0;
             line-height: 1.2;
         }
-        
+               
         div[data-testid="stRadio"] > div {
             display: flex;
-            flex-direction: row;
-            gap: 15px;
-            justify-content: center;
-        }
+            flex-direction: column;    /* 가로에서 세로 정렬로 변경 */
+            gap: 10px;                 /* 보기 사이의 간격 */
+            justify-content: flex-start;
+            align-items: flex-start;    /* 보기들을 왼쪽 정렬 */
+        }     
+        
         </style>
     """, unsafe_allow_html=True)
 
