@@ -8,7 +8,6 @@ from utils import robust_parse, generate_quiz_with_ai
 from prompts import get_ui_labels 
 from admin import show_admin_sidebar
 from pages_logic import show_season_leaderboard, show_chat_room, show_quiz_area
-from my_study_app_utils import get_kst_time, generate_qr_code, apply_custom_style
 from wrong_answer_logic import show_wrong_answer_conquest
 from personal_record_logic import show_personal_records
 
