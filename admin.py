@@ -75,3 +75,38 @@ def show_admin_sidebar(app_settings, get_kst_time):
                 if st.button("퀴즈 삭제", use_container_width=True):
                     if delete_quiz(sel_tit):
                         st.rerun()
+
+# --- 추가된 섹션: 최근 접속자 현황 ---
+        st.divider()
+        with st.expander(" 최근 접속 및 학습 현황 (최근 20개)"):
+            ws_res = get_worksheet("Results") # 결과 시트 가져오기
+            if ws_res:
+                res_data = ws_res.get_all_records()
+                if res_data:
+                    # 데이터프레임 변환 및 전처리
+                    res_df = pd.DataFrame(res_data)
+                    
+                    # 가장 최근 데이터가 아래에 쌓이므로, 위아래를 뒤집어서 최신순으로 정렬
+                    res_df = res_df.iloc[::-1].head(20)
+                    
+                    # 화면에 보여줄 컬럼만 선택 (시트에 'Timestamp' 또는 '날짜' 컬럼이 있다고 가정)
+                    # 만약 컬럼명이 다르다면 시트의 헤더에 맞춰 'User', 'QuizTitle' 등으로 수정하세요.
+                    display_cols = [c for c in ['User', 'QuizTitle', 'Score', 'Timestamp'] if c in res_df.columns]
+                    
+                    if display_cols:
+                        st.dataframe(
+                            res_df[display_cols].rename(columns={
+                                'User': 'ID/이름',
+                                'QuizTitle': '퀴즈명',
+                                'Score': '점수',
+                                'Timestamp': '시간'
+                            }),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    else:
+                        st.table(res_df.head(10)) # 컬럼명이 불확실할 경우 전체 출력
+                else:
+                    st.info("아직 기록된 학습 데이터가 없습니다.")
+            else:
+                st.error("Results 시트를 불러올 수 없습니다.")
