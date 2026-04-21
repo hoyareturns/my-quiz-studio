@@ -5,7 +5,7 @@ import time
 from database import get_all_quizzes, save_quiz, save_result, save_wrong_answers, save_wrong_answers_detailed
 from utils import generate_quiz_with_ai, check_subjective_answer, natural_sort_key, robust_parse
 
-def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_func):
+def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_func, get_kst_time):
     # 1. 실제 데이터에 존재하는 모든 카테고리 추출
     cats_in_data = set(q.get('Category', '미분류') for q in quizzes)
     
@@ -86,7 +86,7 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_
             if st.session_state.selected_quiz:
                 selected_q_item = next((q for q in quizzes if q['Title'] == st.session_state.selected_quiz), None)
                 if selected_q_item and selected_q_item.get('Category') == cat:
-                    render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse_func)
+                    render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse_func, get_kst_time)
 
 def render_ai_generation_ui():
     with st.expander("나만의 우정 파괴 퀴즈 만들기"):
@@ -101,7 +101,7 @@ def render_ai_generation_ui():
                     get_all_quizzes.clear()
                     st.rerun()
 
-def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse_func):
+def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse_func, get_kst_time):
     st.markdown("<div id='quiz_start_anchor'></div>", unsafe_allow_html=True)
     if st.session_state.get('quiz_jump'):
         components.html("<script>window.parent.document.getElementById('quiz_start_anchor').scrollIntoView({behavior: 'smooth'});</script>", height=0)

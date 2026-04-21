@@ -94,7 +94,7 @@ def main():
         show_personal_records(st.session_state.player_name, get_all_results())
     else:
         # TAB_QUIZ (퀴즈 선택)
-        show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse)
+        show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse, get_kst_time)
 
 if __name__ == "__main__":
     if "player_name" not in st.session_state:
