@@ -79,7 +79,7 @@ def show_admin_sidebar(app_settings, get_kst_time):
 
         # --- 수정된 섹션: 최근 접속 및 학습 현황 (사용자 정의 순서) ---
         st.divider()
-        with st.expander("🕒 최근 접속 및 학습 현황 (최근 20개)", expanded=True):
+        with st.expander(" 최근 접속 및 학습 현황", expanded=True):
             ws_res = get_worksheet("Results")
             if ws_res:
                 res_data = ws_res.get_all_records()
