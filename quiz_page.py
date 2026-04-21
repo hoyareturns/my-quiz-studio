@@ -6,56 +6,57 @@ from database import get_all_quizzes, save_quiz, save_result, save_wrong_answers
 from utils import generate_quiz_with_ai, check_subjective_answer, natural_sort_key, robust_parse
 
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_func):
-    # cats_with_quizzes = set(q.get('Category', '미분류') for q in quizzes)
-    # custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
-    # all_display_cats = list(dict.fromkeys(["우정퀴즈"] + custom_cats + list(cats_with_quizzes)))
-
-    # 1. 데이터에 존재하는 실제 카테고리들 추출
+    # 1. 실제 데이터에 존재하는 모든 카테고리 추출
     cats_in_data = set(q.get('Category', '미분류') for q in quizzes)
     
-    # 2. 어드민(Admin) 설정값 가져오기 (가장 앞의 한 개 값만 사용)
-    raw_custom = app_settings.get("custom_categories", "").split(",")
-    admin_main = raw_custom[0].strip() if raw_custom and raw_custom[0].strip() else None
+    # 2. 어드민 설정값 가져오기
+    default_cat = app_settings.get("default_category") # '처음 열릴 카테고리'
+    custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
     
-    # 3. 우선순위 리스트(탭 순서) 조립
-    priority_list = []
+    # 3. [핵심] 탭 순서 재구성: ADMIN(Default) -> 우정퀴즈 -> 기타 순서
+    all_display_cats = []
     
-    if admin_main:
-        # [A순위] 어드민 설정값이 있으면 무조건 1번
-        priority_list.append(admin_main)
-    
-    if "우정퀴즈" not in priority_list:
-        # [B순위] 우정퀴즈가 어드민 설정이 아니라면 그 다음에 배치
-        priority_list.append("우정퀴즈")
+    # [1순위] 어드민이 지정한 '처음 열릴 카테고리'를 무조건 맨 앞으로
+    if default_cat:
+        all_display_cats.append(default_cat)
         
-    # 4. [C순위] 나머지 카테고리들 가나다순 정렬
-    remaining_cats = sorted([c for c in cats_in_data if c not in priority_list])
+    # [2순위] 우정퀴즈 (어드민 설정이 우정퀴즈가 아닐 경우 두 번째 배치)
+    if "우정퀴즈" not in all_display_cats:
+        all_display_cats.append("우정퀴즈")
+        
+    # [3순위] 어드민 '카테고리 목록'에 적힌 나머지들
+    for c in custom_cats:
+        if c not in all_display_cats:
+            all_display_cats.append(c)
+            
+    # [4순위] 그 외 데이터에만 있는 카테고리들 가나다순 정렬
+    remaining_cats = sorted([c for c in cats_in_data if c not in all_display_cats])
+    all_display_cats += remaining_cats
+
+    # 탭 생성 (이제 0번 탭이 어드민 설정과 일치함)
+    tabs = st.tabs(all_display_cats)
     
-    # 5. 최종 탭 리스트 결합
-    all_display_cats = priority_list + remaining_cats
-
-    # 탭 생성
-    tabs = st.tabs(all_display_cats)
-
-
-    tabs = st.tabs(all_display_cats)
     for i, cat in enumerate(all_display_cats):
         with tabs[i]:
             if cat == "우정퀴즈":
                 render_ai_generation_ui()
             
+            # 4. [핵심] 퀴즈 버튼 정렬: 1번부터 오름차순 정렬
             cat_qs = [q for q in quizzes if q.get('Category') == cat]
-            cat_qs = sorted(cat_qs, key=lambda x: natural_sort_key(x['Title'])) 
+            # reverse=False(기본값)를 확실히 하여 1, 2, 3... 순서로 정렬
+            cat_qs = sorted(cat_qs, key=lambda x: natural_sort_key(x['Title']))
+            
             if not cat_qs:
-                st.caption("등록된 퀴즈가 없습니다.")
+                if cat != "우정퀴즈":
+                    st.caption(f"'{cat}' 그룹에 등록된 퀴즈가 없습니다.")
             else:
+                # 2열로 버튼 배치 (1, 2 / 3, 4 ... 순서)
                 cols = st.columns(2)
                 for j, q in enumerate(cat_qs):
-                    if cols[j%2].button(q['Title'], use_container_width=True, key=f"q_{cat}_{j}"):
+                    if cols[j%2].button(q['Title'], use_container_width=True, key=f"btn_{cat}_{j}"):
                         st.session_state.selected_quiz = q['Title']
                         st.session_state.quiz_finished = False
                         st.session_state.user_answers = {}
-                        st.session_state.answered_list = []
                         st.session_state.start_time = None
                         st.session_state.quiz_jump = True 
                         st.rerun()
