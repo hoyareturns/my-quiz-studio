@@ -93,14 +93,14 @@ def show_admin_sidebar(app_settings, get_kst_time):
                     # 시트 헤더: User, Quiz Title, Score, Time, Duration
                     display_map = {
                         'User': 'ID',
-                        'Quiz Title': '퀴즈명',
+                        'QuizTitle': '퀴즈명',
                         'Score': '점수',
                         'Time': '접속시간',
                         'Duration': '소요시간'
                     }
                     
                     # 3. [핵심] 보여줄 컬럼의 '순서'를 리스트로 고정합니다.
-                    requested_order = ['User', 'Quiz Title', 'Score', 'Time', 'Duration']
+                    requested_order = ['User', 'QuizTitle', 'Score', 'Time', 'Duration']
                     
                     # 4. 실제 시트에 존재하는 컬럼만 골라내어 위에서 정한 순서를 유지합니다.
                     existing_cols = [col for col in requested_order if col in res_df.columns]
