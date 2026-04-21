@@ -58,9 +58,9 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
     with st.container(border=True):
         st.markdown(f"### {q_item['Title']}")
         
-        # [복구] 이 구역의 지배자들 (랭킹 테이블)
+        # [복구] 상세 페이지 내 지배자들 랭킹 표시
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
-        with st.expander("🏆 이 구역의 지배자들", expanded=True):
+        with st.expander(" 이 구역의 지배자들", expanded=True):
             if q_res:
                 s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
                 s_df.index = range(1, len(s_df) + 1)
@@ -78,7 +78,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
             for idx, it in enumerate(parsed):
                 st.divider()
                 
-                # [복구] 지문(Passage) 표시 로직
+                # [복구] 지문이 있으면 지문 박스 표시
                 if it.get('p'):
                     with st.container(border=True):
                         st.markdown(f"📄 **[지문]**\n\n{it['p']}")
