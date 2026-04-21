@@ -18,27 +18,23 @@ def clean_text(text):
 
 def check_subjective_answer(user_ans, correct_ans_raw):
     """
-    주관식 정답을 비교합니다.
-    - $ 기호는 엑셀 절대좌표 등을 위해 '유지'합니다.
-    - AI가 정답에 섞어 넣는 (), [] 등의 기호는 제거하거나 분리자로 사용합니다.
+    주관식 정답을 비교합니다. (사용자님의 로직 + 동의어 처리 보강)
     """
     if not user_ans: return False
     
-    # 1. 텍스트 정규화 함수
+    # 1. 텍스트 정규화 함수 (사용자님의 로직 유지)
     def normalize(text):
-        # AI의 부가 설명용 괄호 기호만 제거
+        # AI의 부가 설명용 괄호 기호 제거
         t = re.sub(r'[\[\]\(\)]', '', str(text))
-        # 공백 제거 및 소문자화 ($ 기호는 그대로 유지됨)
+        # 모든 공백 제거 및 소문자화 ($ 기호 유지)
         t = t.replace(" ", "").lower()
         return t
 
     user_clean = normalize(user_ans)
     if not user_clean: return False
 
-    # 2. 정답 후보군 생성
+    # 2. 정답 후보군 생성 (사용자님의 로직 유지)
     c_raw = str(correct_ans_raw)
-    # 기호(/, ,, (, [, ])를 기준으로 정답 후보를 쪼개기
-    # 예: "절대참조 ($A$1)" -> ["절대참조 ", " $A$1"]
     raw_parts = re.split(r'[\(\)/,\[\]]', c_raw)
     
     candidates = [c_raw] # 전체 원본 포함
@@ -47,9 +43,23 @@ def check_subjective_answer(user_ans, correct_ans_raw):
         if p_strip:
             candidates.append(p_strip)
             
-    # 3. 하나라도 일치하면 정답 인정
+    # [보강] 3. 엑셀 특화 동의어 사전 (0/FALSE, 1/TRUE 등)
+    # 정답 후보 중 하나라도 아래 키에 해당하면, 사용자 입력이 그 값의 동의어인지 체크합니다.
+    synonyms = {
+        "false": ["0", "거짓", "f"],
+        "true": ["1", "참", "t"],
+        "0": ["false"],
+        "1": ["true"]
+    }
+            
+    # 4. 하나라도 일치하면 정답 인정
     for cand in candidates:
-        if user_clean == normalize(cand):
+        norm_cand = normalize(cand)
+        # (1) 직접 일치 확인
+        if user_clean == norm_cand:
+            return True
+        # (2) 동의어 확인 (예: 정답 후보가 false일 때 사용자가 0을 입력한 경우)
+        if norm_cand in synonyms and user_clean in synonyms[norm_cand]:
             return True
             
     return False
