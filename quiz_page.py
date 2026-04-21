@@ -5,7 +5,7 @@ import time
 from database import get_all_quizzes, save_quiz, save_result, save_wrong_answers
 from utils import generate_quiz_with_ai, check_subjective_answer
 
-def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse):
+def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_func):
     cats_with_quizzes = set(q.get('Category', '미분류') for q in quizzes)
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
     all_display_cats = list(dict.fromkeys(["우정퀴즈"] + custom_cats + list(cats_with_quizzes)))
@@ -34,7 +34,7 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse)
             if st.session_state.selected_quiz:
                 selected_q_item = next((q for q in quizzes if q['Title'] == st.session_state.selected_quiz), None)
                 if selected_q_item and selected_q_item.get('Category') == cat:
-                    render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse)
+                    render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse_func)
 
 def render_ai_generation_ui():
     with st.expander("나만의 우정 파괴 퀴즈 만들기"):
@@ -49,7 +49,7 @@ def render_ai_generation_ui():
                     get_all_quizzes.clear()
                     st.rerun()
 
-def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse):
+def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse_func):
     st.markdown("<div id='quiz_start_anchor'></div>", unsafe_allow_html=True)
     if st.session_state.get('quiz_jump'):
         components.html("<script>window.parent.document.getElementById('quiz_start_anchor').scrollIntoView({behavior: 'smooth'});</script>", height=0)
@@ -57,15 +57,34 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
 
     with st.container(border=True):
         st.markdown(f"### {q_item['Title']}")
+        
+        # [복구] 이 구역의 지배자들 (랭킹 테이블)
+        q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
+        with st.expander("🏆 이 구역의 지배자들", expanded=True):
+            if q_res:
+                s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
+                s_df.index = range(1, len(s_df) + 1)
+                st.table(s_df[['User', 'Score', 'Duration']].rename(columns={'User':'수험번호', 'Score':'점수', 'Duration':'시간'}))
+            else: 
+                st.info("첫 지배자가 되어보세요!")
+
         if st.session_state.start_time is None and not st.session_state.quiz_finished:
             if st.button("시험 시작하기", use_container_width=True, type="primary"):
                 st.session_state.start_time = time.time()
                 st.rerun()
+        
         elif not st.session_state.quiz_finished:
-            parsed = robust_parse(q_item['Content'])
+            parsed = robust_parse_func(q_item['Content'])
             for idx, it in enumerate(parsed):
                 st.divider()
+                
+                # [복구] 지문(Passage) 표시 로직
+                if it.get('p'):
+                    with st.container(border=True):
+                        st.markdown(f"📄 **[지문]**\n\n{it['p']}")
+                
                 st.markdown(f"**Q{idx+1}.** {it['q']}")
+                
                 if it['o'] == ["주관식"]:
                     st.session_state.user_answers[f"ans_{idx}"] = st.text_input("정답 입력", key=f"in_{idx}")
                 else:
@@ -83,7 +102,6 @@ def score_logic(parsed, q_item, player_name):
         u = st.session_state.user_answers.get(f"ans_{k}", "")
         c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
         
-        # [수정] 주관식/객관식 통합 채점 로직 적용
         is_c = check_subjective_answer(u, it['a']) if it['o'] == ["주관식"] else (str(u) == str(c))
         
         if not is_c:
