@@ -143,7 +143,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                     st.session_state.user_answers[f"ans_{idx}"] = st.radio("보기", it['o'], index=None, key=f"in_{idx}", label_visibility="collapsed")
 
             if st.button("최종 제출", use_container_width=True):
-                score_logic(parsed, q_item, player_name)
+                score_logic(parsed, q_item, player_name, get_kst_time)
 
     if st.session_state.quiz_finished:
         render_results()
