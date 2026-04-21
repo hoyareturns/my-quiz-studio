@@ -13,27 +13,33 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_
     default_cat = app_settings.get("default_category") # '처음 열릴 카테고리'
     custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
     
-    # 3. [핵심] 탭 순서 재구성: ADMIN(Default) -> 우정퀴즈 -> 기타 순서
+    # 3. [핵심 수정] 탭 목록 재구성: 데이터가 있는 경우만 포함 (우정퀴즈는 항상 포함)
     all_display_cats = []
     
-    # [1순위] 어드민이 지정한 '처음 열릴 카테고리'를 무조건 맨 앞으로
+    # [1순위] 어드민이 지정한 '처음 열릴 카테고리'
+    # 우정퀴즈이거나 실제 퀴즈 데이터가 있는 경우에만 추가합니다.
     if default_cat:
-        all_display_cats.append(default_cat)
+        if default_cat == "우정퀴즈" or default_cat in cats_in_data:
+            all_display_cats.append(default_cat)
         
-    # [2순위] 우정퀴즈 (어드민 설정이 우정퀴즈가 아닐 경우 두 번째 배치)
+    # [2순위] 우정퀴즈 (데이터 유무와 상관없이 항상 노출)
     if "우정퀴즈" not in all_display_cats:
         all_display_cats.append("우정퀴즈")
         
-    # [3순위] 어드민 '카테고리 목록'에 적힌 나머지들
+    # [3순위] 어드민 '카테고리 목록'에 적힌 항목들 중 퀴즈가 있는 것만 추가
     for c in custom_cats:
-        if c not in all_display_cats:
+        if c not in all_display_cats and c in cats_in_data:
             all_display_cats.append(c)
             
     # [4순위] 그 외 데이터에만 있는 카테고리들 가나다순 정렬
     remaining_cats = sorted([c for c in cats_in_data if c not in all_display_cats])
     all_display_cats += remaining_cats
 
-    # 탭 생성 (이제 0번 탭이 어드민 설정과 일치함)
+    # 탭 생성 (필터링된 목록 사용)
+    if not all_display_cats:
+        st.info("표시할 퀴즈 카테고리가 없습니다.")
+        return
+
     tabs = st.tabs(all_display_cats)
     
     for i, cat in enumerate(all_display_cats):
