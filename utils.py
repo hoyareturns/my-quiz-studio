@@ -3,23 +3,27 @@ import google.generativeai as genai
 
 def clean_text(text):
     if not text: return ""
-    
-    text = text.replace(r"^{\circ}", "°")
-    text = text.replace(r"^\circ", "°")
-    text = text.replace(r"\circ", "°")
-    
-    # [수정] 수식을 망가뜨리던 아래 두 줄($, ^ 기호 삭제)을 제거했습니다.
-    # text = text.replace("$", "")
-    # text = text.replace("^", "")
-    
-    # [추가] 노트북LM 등 외부 AI가 수식에 씌우는 백틱(`)과 잘못된 이스케이프 기호 복구
-    text = text.replace("`", "")
-    text = text.replace(r"\$", "$")
+    text = text.replace(r"^{\circ}", "°").replace(r"^\circ", "°").replace(r"\circ", "°")
+    text = text.replace("`", "").replace(r"\$", "$")
     text = text.replace(r"\(", "$").replace(r"\)", "$")
     text = text.replace(r"\[", "$$").replace(r"\]", "$$")
-    
     text = text.replace("**", "").strip()
     return text
+
+def check_subjective_answer(user_ans, correct_ans_raw):
+    """주관식 정답 비교 (기호/공백 무시)"""
+    if not user_ans: return False
+    u = re.sub(r"\s+", "", str(user_ans)).lower()
+    c_raw = str(correct_ans_raw)
+    cleaned_c = re.sub(r'[\[\]]', '', c_raw)
+    parts = re.split(r'[\(\)/,]', cleaned_c)
+    candidates = [cleaned_c]
+    for p in parts:
+        p_clean = p.replace(")", "").strip()
+        if p_clean: candidates.append(p_clean)
+    for cand in candidates:
+        if u == re.sub(r"\s+", "", str(cand)).lower(): return True
+    return False
 
 def robust_parse(text):
     if not text: return []

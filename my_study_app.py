@@ -2,21 +2,26 @@ import streamlit as st
 import re
 import time
 import random
+
+# 1. 공통 데이터 및 유틸리티 관련
 from database import get_all_quizzes, get_all_results, get_settings, get_chats, save_quiz
 from utils import robust_parse, generate_quiz_with_ai
-
-# [수정] prompts.py에서 이름표 변수들을 모두 불러옵니다.
 from prompts import VIEW_OPTIONS, APP_TITLE, TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, DEFAULT_CATEGORY
-
-from admin import show_admin_sidebar
-from pages_logic import show_season_leaderboard, show_chat_room, show_quiz_area
 from my_study_app_utils import get_kst_time, generate_qr_code, apply_custom_style
+
+# 2. 관리자 화면 관련
+from admin import show_admin_sidebar
+
+# 3. [개별 분리된] 페이지 로직 관련
+from quiz_page import show_quiz_area
+from leaderboard_page import show_season_leaderboard
+from chat_page import show_chat_room
 from wrong_answer_logic import show_wrong_answer_conquest
 from personal_record_logic import show_personal_records
 
 def main():
     st.set_page_config(
-        page_title=APP_TITLE, # [수정] 변수 적용
+        page_title=APP_TITLE, 
         page_icon="logo.png",
         layout="centered"
     )
@@ -24,17 +29,9 @@ def main():
     apply_custom_style()
     st.markdown("""
         <style>
-        header[data-testid="stHeader"] { 
-            background-color: rgba(0,0,0,0) !important; 
-            pointer-events: none !important; 
-        }
-        button[data-testid="stSidebarCollapseButton"] {
-            pointer-events: auto !important;
-            z-index: 9999 !important;
-        }
-
+        header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; pointer-events: none !important; }
+        button[data-testid="stSidebarCollapseButton"] { pointer-events: auto !important; z-index: 9999 !important; }
         .main .block-container { padding-top: 5rem !important; }
-
         div[data-testid="stTextInput"] label { display: none !important; }
         div[data-testid="stTextInput"] input {
             height: 35px !important;
@@ -45,28 +42,9 @@ def main():
             border-radius: 0 !important;
             background-color: transparent !important;
         }
-        div[data-testid="stTextInput"] input:focus {
-            border-bottom: 2px solid #ff4b4b !important;
-            box-shadow: none !important;
-        }
-        
-        .title-text {
-            font-size: 2.2rem;
-            font-weight: 800;
-            color: #ff4b4b;
-            margin-bottom: 0;
-            padding-bottom: 0;
-            line-height: 1.2;
-        }
-               
-        div[data-testid="stRadio"] > div {
-            display: flex;
-            flex-direction: column;    /* 가로에서 세로 정렬로 변경 */
-            gap: 10px;                 /* 보기 사이의 간격 */
-            justify-content: flex-start;
-            align-items: flex-start;    /* 보기들을 왼쪽 정렬 */
-        }     
-        
+        div[data-testid="stTextInput"] input:focus { border-bottom: 2px solid #ff4b4b !important; box-shadow: none !important; }
+        .title-text { font-size: 2.2rem; font-weight: 800; color: #ff4b4b; line-height: 1.2; }
+        div[data-testid="stRadio"] > div { display: flex; flex-direction: column; gap: 10px; justify-content: flex-start; align-items: flex-start; } 
         </style>
     """, unsafe_allow_html=True)
 
@@ -75,35 +53,24 @@ def main():
     with st.sidebar:
         show_admin_sidebar(app_settings, get_kst_time)
         st.divider()
-        
-        # 본인의 Streamlit 앱 주소로 변경해 주세요!
         app_url = "https://my-quiz-studio.streamlit.app" 
-        
         qr_img = generate_qr_code(app_url)
         st.image(qr_img, width=150)
 
     c1, c2 = st.columns([1, 1])
     with c1:
-        # [수정] 변수 적용
         st.markdown(f'<p class="title-text">{APP_TITLE}</p>', unsafe_allow_html=True)
     with c2:
         st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name)
 
-    st.write("")
-    st.write("")
-    st.write("")
+    st.write(""); st.write(""); st.write("")
 
-    # [수정] 기본 탭 설정
+    # 기본 탭 설정
     default_view = app_settings.get('default_view', TAB_QUIZ)
     def_idx = VIEW_OPTIONS.index(default_view) if default_view in VIEW_OPTIONS else 0
 
     view_mode = st.radio(
-        "탭", 
-        VIEW_OPTIONS, 
-        horizontal=True, 
-        label_visibility="collapsed", 
-        index=def_idx,
-        key="main_tab_selector"
+        "탭", VIEW_OPTIONS, horizontal=True, label_visibility="collapsed", index=def_idx, key="main_tab_selector"
     )
     
     st.write("") 
@@ -111,20 +78,22 @@ def main():
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
     season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
 
+    # 세션 상태 초기화
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump']:
         if k not in st.session_state: 
             st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump'] else None
 
-    # [수정] 분기 조건문 변수 적용
+    # --- [수정 완료] 조건 분기문 (ui_labels 대신 prompts 변수 직접 사용) ---
     if view_mode == TAB_RANK:
         show_season_leaderboard(season_res, season_start)
     elif view_mode == TAB_REVIEW:
         show_wrong_answer_conquest(st.session_state.player_name, get_all_quizzes(), robust_parse)
-    elif view_mode == TAB_RECORDS:
-        show_personal_records(st.session_state.player_name, get_all_results())
     elif view_mode == TAB_CHAT:
         show_chat_room(st.session_state.player_name)
+    elif view_mode == TAB_RECORDS:
+        show_personal_records(st.session_state.player_name, get_all_results())
     else:
+        # TAB_QUIZ (퀴즈 선택)
         show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse)
 
 if __name__ == "__main__":
