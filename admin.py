@@ -1,11 +1,12 @@
 import streamlit as st
+import pandas as pd
 from database import (get_all_quizzes, save_setting, save_chat, get_worksheet, 
                       update_quiz, delete_quiz)
 # EXTERNAL_PROMPT_TEMPLATE를 추가로 불러옵니다.
 from prompts import VIEW_OPTIONS, FEEDBACK_MODES, EXTERNAL_PROMPT_TEMPLATE
 
 def show_admin_sidebar(app_settings, get_kst_time):
-    ADMIN_PASSWORD = "1234"
+    ADMIN_PASSWORD = "2662"
     
     st.subheader("출제 위원실 (관리자)")
     pw = st.text_input("비밀번호", type="password", label_visibility="collapsed")
@@ -76,7 +77,7 @@ def show_admin_sidebar(app_settings, get_kst_time):
                     if delete_quiz(sel_tit):
                         st.rerun()
 
-# --- 추가된 섹션: 최근 접속자 현황 ---
+        # --- 추가된 섹션: 최근 접속자 현황 ---
         st.divider()
         with st.expander(" 최근 접속 및 학습 현황 (최근 20개)"):
             ws_res = get_worksheet("Results") # 결과 시트 가져오기
