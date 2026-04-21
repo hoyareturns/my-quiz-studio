@@ -53,7 +53,7 @@ def main():
     with st.sidebar:
         show_admin_sidebar(app_settings, get_kst_time)
         st.divider()
-        app_url = "https://my-quiz-studio.streamlit.app" 
+        app_url = "https://hoya-quiz-studio.streamlit.app/" 
         qr_img = generate_qr_code(app_url)
         st.image(qr_img, width=150)
 
