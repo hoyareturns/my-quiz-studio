@@ -1,6 +1,12 @@
 import re
 import google.generativeai as genai
 
+def natural_sort_key(s):
+    """문자열 내의 숫자를 숫자로 인식하여 정렬 (퀴즈2 < 퀴즈11)"""
+    return [int(text) if text.isdigit() else text.lower()
+            for text in re.split('([0-9]+)', str(s))]
+
+
 def clean_text(text):
     if not text: return ""
     text = text.replace(r"^{\circ}", "°").replace(r"^\circ", "°").replace(r"\circ", "°")
@@ -11,18 +17,41 @@ def clean_text(text):
     return text
 
 def check_subjective_answer(user_ans, correct_ans_raw):
-    """주관식 정답 비교 (기호/공백 무시)"""
+    """
+    주관식 정답을 비교합니다.
+    - $ 기호는 엑셀 절대좌표 등을 위해 '유지'합니다.
+    - AI가 정답에 섞어 넣는 (), [] 등의 기호는 제거하거나 분리자로 사용합니다.
+    """
     if not user_ans: return False
-    u = re.sub(r"\s+", "", str(user_ans)).lower()
+    
+    # 1. 텍스트 정규화 함수
+    def normalize(text):
+        # AI의 부가 설명용 괄호 기호만 제거
+        t = re.sub(r'[\[\]\(\)]', '', str(text))
+        # 공백 제거 및 소문자화 ($ 기호는 그대로 유지됨)
+        t = t.replace(" ", "").lower()
+        return t
+
+    user_clean = normalize(user_ans)
+    if not user_clean: return False
+
+    # 2. 정답 후보군 생성
     c_raw = str(correct_ans_raw)
-    cleaned_c = re.sub(r'[\[\]]', '', c_raw)
-    parts = re.split(r'[\(\)/,]', cleaned_c)
-    candidates = [cleaned_c]
-    for p in parts:
-        p_clean = p.replace(")", "").strip()
-        if p_clean: candidates.append(p_clean)
+    # 기호(/, ,, (, [, ])를 기준으로 정답 후보를 쪼개기
+    # 예: "절대참조 ($A$1)" -> ["절대참조 ", " $A$1"]
+    raw_parts = re.split(r'[\(\)/,\[\]]', c_raw)
+    
+    candidates = [c_raw] # 전체 원본 포함
+    for p in raw_parts:
+        p_strip = p.strip()
+        if p_strip:
+            candidates.append(p_strip)
+            
+    # 3. 하나라도 일치하면 정답 인정
     for cand in candidates:
-        if u == re.sub(r"\s+", "", str(cand)).lower(): return True
+        if user_clean == normalize(cand):
+            return True
+            
     return False
 
 def robust_parse(text):

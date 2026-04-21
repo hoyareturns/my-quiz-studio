@@ -3,12 +3,40 @@ import streamlit.components.v1 as components
 import pandas as pd
 import time
 from database import get_all_quizzes, save_quiz, save_result, save_wrong_answers
-from utils import generate_quiz_with_ai, check_subjective_answer
+from utils import generate_quiz_with_ai, check_subjective_answer, natural_sort_key, robust_parse
 
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_func):
-    cats_with_quizzes = set(q.get('Category', '미분류') for q in quizzes)
-    custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
-    all_display_cats = list(dict.fromkeys(["우정퀴즈"] + custom_cats + list(cats_with_quizzes)))
+    # cats_with_quizzes = set(q.get('Category', '미분류') for q in quizzes)
+    # custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
+    # all_display_cats = list(dict.fromkeys(["우정퀴즈"] + custom_cats + list(cats_with_quizzes)))
+
+    # 1. 데이터에 존재하는 실제 카테고리들 추출
+    cats_in_data = set(q.get('Category', '미분류') for q in quizzes)
+    
+    # 2. 어드민(Admin) 설정값 가져오기 (가장 앞의 한 개 값만 사용)
+    raw_custom = app_settings.get("custom_categories", "").split(",")
+    admin_main = raw_custom[0].strip() if raw_custom and raw_custom[0].strip() else None
+    
+    # 3. 우선순위 리스트(탭 순서) 조립
+    priority_list = []
+    
+    if admin_main:
+        # [A순위] 어드민 설정값이 있으면 무조건 1번
+        priority_list.append(admin_main)
+    
+    if "우정퀴즈" not in priority_list:
+        # [B순위] 우정퀴즈가 어드민 설정이 아니라면 그 다음에 배치
+        priority_list.append("우정퀴즈")
+        
+    # 4. [C순위] 나머지 카테고리들 가나다순 정렬
+    remaining_cats = sorted([c for c in cats_in_data if c not in priority_list])
+    
+    # 5. 최종 탭 리스트 결합
+    all_display_cats = priority_list + remaining_cats
+
+    # 탭 생성
+    tabs = st.tabs(all_display_cats)
+
 
     tabs = st.tabs(all_display_cats)
     for i, cat in enumerate(all_display_cats):
@@ -17,6 +45,7 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_
                 render_ai_generation_ui()
             
             cat_qs = [q for q in quizzes if q.get('Category') == cat]
+            cat_qs = sorted(cat_qs, key=lambda x: natural_sort_key(x['Title'])) 
             if not cat_qs:
                 st.caption("등록된 퀴즈가 없습니다.")
             else:
@@ -66,7 +95,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
                 s_df.index = range(1, len(s_df) + 1)
                 st.table(s_df[['User', 'Score', 'Duration']].rename(columns={'User':'수험번호', 'Score':'점수', 'Duration':'시간'}))
             else: 
-                st.info("첫 지배자가 되어보세요!")
+                st.info(" ")
 
         if st.session_state.start_time is None and not st.session_state.quiz_finished:
             if st.button("시험 시작하기", use_container_width=True, type="primary"):
