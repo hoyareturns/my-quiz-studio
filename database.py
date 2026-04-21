@@ -152,3 +152,20 @@ def get_all_users_with_wrongs():
     data = ws.get_all_records()
     users = {str(r.get('User')) for r in data if r.get('Status') == "오답"}
     return sorted(list(users))
+
+def reset_all_data():
+    """모든 시트의 데이터를 1번 줄 제외하고 삭제"""
+    sheet_names = ["Quizzes", "Results", "WrongAnswers"]
+    
+    try:
+        for name in sheet_names:
+            ws = get_worksheet(name)
+            if ws:
+                # 데이터가 있는지 확인 (헤더 제외 2행부터 데이터가 있는지)
+                all_values = ws.get_all_values()
+                if len(all_values) > 1:
+                    # 2행부터 마지막 행까지 한 번에 삭제
+                    ws.delete_rows(2, len(all_values))
+        return True, "모든 데이터가 초기화되었습니다."
+    except Exception as e:
+        return False, f"초기화 중 오류 발생: {str(e)}"

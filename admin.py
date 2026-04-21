@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 from database import (get_all_quizzes, save_setting, save_chat, get_worksheet, 
-                      update_quiz, delete_quiz)
-# EXTERNAL_PROMPT_TEMPLATE를 추가로 불러옵니다.
+                      update_quiz, delete_quiz, reset_all_data)
 from prompts import VIEW_OPTIONS, FEEDBACK_MODES, EXTERNAL_PROMPT_TEMPLATE
 
 def show_admin_sidebar(app_settings, get_kst_time):
@@ -14,10 +13,28 @@ def show_admin_sidebar(app_settings, get_kst_time):
     if pw == ADMIN_PASSWORD:
         st.success("인증 완료")
         
-        if st.button("새 시즌 시작 (랭킹 초기화)", use_container_width=True, type="primary"):
-            save_setting("season_start", get_kst_time())
-            save_chat("시스템", "새로운 시즌이 시작되었습니다!")
-            st.rerun()
+        with st.expander(" 새 시즌 시작 (데이터 전체 초기화)", expanded=False):
+            st.warning("이 작업은 '퀴즈 목록', '학습 결과', '오답 기록'을 모두 영구 삭제합니다. (복구 불가)")
+            
+            # 삭제 전용 비밀번호 재확인
+            confirm_pw = st.text_input("초기화 확인을 위해 비밀번호를 다시 입력하세요", type="password", key="reset_confirm_pw")
+            
+            if st.button(" 모든 데이터 삭제 및 시즌 초기화 실행", use_container_width=True, type="primary"):
+                if confirm_pw == ADMIN_PASSWORD:
+                    with st.spinner("데이터를 초기화 중입니다..."):
+                        success, msg = reset_all_data()
+                        if success:
+                            # 시즌 시작 로그 기록
+                            save_setting("season_start", get_kst_time())
+                            save_chat("시스템", "새로운 시즌이 시작되었습니다! 모든 데이터가 초기화되었습니다.")
+                            
+                            st.success(msg)
+                            get_all_quizzes.clear() # 캐시 비우기
+                            st.rerun()
+                        else:
+                            st.error(msg)
+                else:
+                    st.error("비밀번호가 일치하지 않습니다.")
         
         st.divider()
         all_q = get_all_quizzes()
