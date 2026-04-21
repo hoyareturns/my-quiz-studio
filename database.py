@@ -169,3 +169,27 @@ def reset_all_data():
         return True, "모든 데이터가 초기화되었습니다."
     except Exception as e:
         return False, f"초기화 중 오류 발생: {str(e)}"
+    
+def save_wrong_answers_detailed(quiz_title, category, player_name, wrong_items, kst_time_func):
+    """신규 시트(WrongAnswers_Logs)에 오답의 모든 디테일을 기록"""
+    ws = get_worksheet("WrongAnswers_Logs")
+    if ws:
+        rows = []
+        for it in wrong_items:
+            # 보기 리스트를 문자열로 변환
+            options_str = ", ".join(it.get('o', [])) if isinstance(it.get('o'), list) else str(it.get('o'))
+            
+            rows.append([
+                kst_time_func(),     # Time
+                player_name,         # User
+                category,            # Category
+                quiz_title,          # Quiz Title
+                it.get('p', ''),     # Passage (지문)
+                it.get('q', ''),     # Question (질문)
+                options_str,         # Options (보기)
+                str(it.get('a', '')),# Answer (정답)
+                it.get('e', '')      # Explanation (해설)
+            ])
+        
+        if rows:
+            ws.append_rows(rows)

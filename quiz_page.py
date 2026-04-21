@@ -2,7 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import time
-from database import get_all_quizzes, save_quiz, save_result, save_wrong_answers
+from database import get_all_quizzes, save_quiz, save_result, save_wrong_answers, save_wrong_answers_detailed
 from utils import generate_quiz_with_ai, check_subjective_answer, natural_sort_key, robust_parse
 
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_func):
@@ -148,25 +148,62 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
     if st.session_state.quiz_finished:
         render_results()
 
-def score_logic(parsed, q_item, player_name):
+# def score_logic(parsed, q_item, player_name):
+#     review_list, wrongs_results, wrongs_conquest = [], [], []
+#     for k, it in enumerate(parsed):
+#         u = st.session_state.user_answers.get(f"ans_{k}", "")
+#         c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
+        
+#         is_c = check_subjective_answer(u, it['a']) if it['o'] == ["주관식"] else (str(u) == str(c))
+        
+#         if not is_c:
+#             wrongs_results.append(it['k'])
+#             wrongs_conquest.append(it['q'])
+#             review_list.append({'idx': k+1, 'q': it['q'], 'u': u if u else "미입력", 'c': c, 'e': it['e']})
+    
+#     score = ((len(parsed)-len(review_list))/len(parsed))*100
+#     save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs_results)
+#     if wrongs_conquest: save_wrong_answers(q_item['Title'], player_name, wrongs_conquest)
+#     st.session_state.quiz_finished, st.session_state.last_score, st.session_state.review_data = True, score, review_list
+#     st.rerun()
+
+def score_logic(parsed, q_item, player_name, get_kst_time): # get_kst_time 인자 추가
     review_list, wrongs_results, wrongs_conquest = [], [], []
+    wrongs_full_data = [] # 신규 시트용 데이터 보관함
+    
     for k, it in enumerate(parsed):
         u = st.session_state.user_answers.get(f"ans_{k}", "")
         c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
-        
         is_c = check_subjective_answer(u, it['a']) if it['o'] == ["주관식"] else (str(u) == str(c))
         
         if not is_c:
-            wrongs_results.append(it['k'])
-            wrongs_conquest.append(it['q'])
+            wrongs_results.append(it['k']) # 기존 기능용 (ID)
+            wrongs_conquest.append(it['q']) # 기존 기능용 (질문 텍스트)
+            wrongs_full_data.append(it)    # 신규 시트용 (전체 객체)
             review_list.append({'idx': k+1, 'q': it['q'], 'u': u if u else "미입력", 'c': c, 'e': it['e']})
     
     score = ((len(parsed)-len(review_list))/len(parsed))*100
+    
+    # 1. 결과 저장 (기존)
     save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs_results)
-    if wrongs_conquest: save_wrong_answers(q_item['Title'], player_name, wrongs_conquest)
+    
+    # 2. 오답 정복 기능용 저장 (기존 유지)
+    if wrongs_conquest: 
+        save_wrong_answers(q_item['Title'], player_name, wrongs_conquest)
+        
+    # 3. [신규] 관리자 취합용 상세 로그 저장 (신규 시트로!)
+    if wrongs_full_data:
+        save_wrong_answers_detailed(
+            q_item['Title'], 
+            q_item.get('Category', '미분류'), 
+            player_name, 
+            wrongs_full_data, 
+            get_kst_time
+        )
+    
     st.session_state.quiz_finished, st.session_state.last_score, st.session_state.review_data = True, score, review_list
     st.rerun()
-
+    
 def render_results():
     st.success(f"최종 점수: {int(st.session_state.last_score)}점")
     for rev in st.session_state.review_data:
