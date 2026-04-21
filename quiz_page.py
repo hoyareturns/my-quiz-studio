@@ -43,23 +43,39 @@ def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_
             
             # 4. [핵심] 퀴즈 버튼 정렬: 1번부터 오름차순 정렬
             cat_qs = [q for q in quizzes if q.get('Category') == cat]
-            # reverse=False(기본값)를 확실히 하여 1, 2, 3... 순서로 정렬
             cat_qs = sorted(cat_qs, key=lambda x: natural_sort_key(x['Title']))
             
             if not cat_qs:
                 if cat != "우정퀴즈":
                     st.caption(f"'{cat}' 그룹에 등록된 퀴즈가 없습니다.")
             else:
-                # 2열로 버튼 배치 (1, 2 / 3, 4 ... 순서)
-                cols = st.columns(2)
-                for j, q in enumerate(cat_qs):
-                    if cols[j%2].button(q['Title'], use_container_width=True, key=f"btn_{cat}_{j}"):
-                        st.session_state.selected_quiz = q['Title']
-                        st.session_state.quiz_finished = False
-                        st.session_state.user_answers = {}
-                        st.session_state.start_time = None
-                        st.session_state.quiz_jump = True 
-                        st.rerun()
+                # [수정 포인트] 가로 줄(Row) 단위로 2개씩 묶어서 버튼 배치
+                # 리스트를 2개씩 건너뛰며 반복문을 실행합니다.
+                for j in range(0, len(cat_qs), 2):
+                    cols = st.columns(2) # 매 줄마다 새로운 2개 컬럼 생성
+                    
+                    # 현재 줄의 첫 번째 칸 (홀수 번째 퀴즈)
+                    with cols[0]:
+                        q = cat_qs[j]
+                        if st.button(q['Title'], use_container_width=True, key=f"btn_{cat}_{j}"):
+                            st.session_state.selected_quiz = q['Title']
+                            st.session_state.quiz_finished = False
+                            st.session_state.user_answers = {}
+                            st.session_state.start_time = None
+                            st.session_state.quiz_jump = True 
+                            st.rerun()
+                    
+                    # 현재 줄의 두 번째 칸 (짝수 번째 퀴즈 - 존재할 경우에만 생성)
+                    if j + 1 < len(cat_qs):
+                        with cols[1]:
+                            q = cat_qs[j+1]
+                            if st.button(q['Title'], use_container_width=True, key=f"btn_{cat}_{j+1}"):
+                                st.session_state.selected_quiz = q['Title']
+                                st.session_state.quiz_finished = False
+                                st.session_state.user_answers = {}
+                                st.session_state.start_time = None
+                                st.session_state.quiz_jump = True 
+                                st.rerun()
 
             if st.session_state.selected_quiz:
                 selected_q_item = next((q for q in quizzes if q['Title'] == st.session_state.selected_quiz), None)
