@@ -3,6 +3,7 @@
 import streamlit as st
 import time
 from database import get_wrong_answers_by_user, update_wrong_answer_status, get_all_users_with_wrongs
+from utils import check_subjective_answer
 
 def show_wrong_answer_conquest(current_player, all_quizzes, robust_parse):
     st.subheader(" 오답 정복")
@@ -58,11 +59,17 @@ def show_wrong_answer_conquest(current_player, all_quizzes, robust_parse):
             else:
                 user_ans = st.radio("보기 선택", q_data['o'], index=None, key=ans_key, label_visibility="collapsed")
 
+
             if st.button("정답 확인", key=f"btn_{ans_key}"):
-                correct = str(q_data['a']) if is_short else q_data['o'][q_data['a']]
-                
-                # 정답 비교 로직
-                is_correct = (str(user_ans).replace(" ","").lower() == str(correct).replace(" ","").lower())
+                # [수정 포인트] 주관식과 객관식을 분리하여 채점합니다.
+                if is_short:
+                    # utils.py의 AI 하이브리드 채점 로직 사용
+                    # 0/FALSE 등 의미는 통하되 오타는 엄격하게 체크함
+                    is_correct = check_subjective_answer(user_ans, q_data['a'])
+                else:
+                    # 객관식은 선택한 값과 정답 인덱스의 값이 일치하는지 확인
+                    correct_val = q_data['o'][q_data['a']]
+                    is_correct = (str(user_ans) == str(correct_val))
                 
                 if is_correct:
                     st.success("정답입니다! 정복 완료.")
