@@ -32,8 +32,8 @@ def show_wrong_answer_conquest(current_player, all_quizzes, robust_parse):
     for idx, rec in enumerate(records):
         with st.container(border=True):
             q_title = rec.get('QuizTitle')
-            q_text = rec.get('QuestionText')
-            
+            q_text = str(rec.get('QuestionText', '')).strip()
+
             # 원본 퀴즈 데이터에서 해당 문제의 옵션과 정답 찾기
             parent_quiz = next((q for q in all_quizzes if q['Title'] == q_title), None)
             if not parent_quiz: 
@@ -41,7 +41,7 @@ def show_wrong_answer_conquest(current_player, all_quizzes, robust_parse):
                 continue
             
             parsed = robust_parse(parent_quiz['Content'])
-            q_data = next((p for p in parsed if p['q'] == q_text), None)
+            q_data = next((p for p in parsed if str(p['q']).strip() == q_text), None)
             if not q_data: continue
 
             st.caption(f"출처: {q_title}")
