@@ -92,13 +92,18 @@ def render_ai_generation_ui():
     with st.expander("나만의 우정 파괴 퀴즈 만들기"):
         q_title = st.text_input("퀴즈 제목", placeholder="예: 길동이의 우정 테스트" , key="ai_title")
         q_topic = st.text_input("퀴즈 주제", placeholder="예: 설명하는 동물의 이름",  key="ai_topic")
+        
         if st.button("AI 출제 시작"):            
-            if api_key and q_title and q_topic:
+            # [수정] api_key 체크를 제거하고 제목과 주제 입력 여부만 확인합니다.
+            if q_title and q_topic:
                 with st.spinner("생성 중..."):
-                    text = generate_quiz_with_ai( q_topic)
+                    # 실제 API 키 처리는 generate_quiz_with_ai 함수 내부에서 수행됩니다.
+                    text = generate_quiz_with_ai(q_topic)
                     save_quiz(q_title, "우정퀴즈", text)
                     get_all_quizzes.clear()
                     st.rerun()
+            else:
+                st.warning("퀴즈 제목과 주제를 모두 입력해주세요.")
 
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse_func, get_kst_time):
     st.markdown("<div id='quiz_start_anchor'></div>", unsafe_allow_html=True)
