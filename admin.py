@@ -14,8 +14,8 @@ def show_admin_sidebar(app_settings, get_kst_time):
         st.success("인증 완료")
         
         # --- [추가] 구글 시트 백업 버튼 영역 ---
-        st.subheader(" 데이터 보관")
-        st.info("시즌 초기화 전, 현재 데이터를 구글 드라이브에 안전하게 백업해두세요.")
+        # st.subheader(" 데이터 보관")
+        # st.info("시즌 초기화 전, 현재 데이터를 구글 드라이브에 안전하게 백업해두세요.")
         
         if st.button(" 지금 즉시 구글 시트 백업 실행", use_container_width=True):
             from utils import trigger_google_sheet_backup # utils에 있는 함수 호출
@@ -24,9 +24,9 @@ def show_admin_sidebar(app_settings, get_kst_time):
                 if success:
                     st.success(" 백업이 완료되었습니다! 구글 드라이브 폴더를 확인하세요.")
                 else:
-                    st.error(f"❌ {msg}")
+                    st.error(f" {msg}")
         
-        st.divider() # 시각적 구분을 위한 선
+        # st.divider() # 시각적 구분을 위한 선
         # --------------------------------------
 
         with st.expander(" 새 시즌 시작 (데이터 전체 초기화)", expanded=False):
