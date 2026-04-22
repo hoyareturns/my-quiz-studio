@@ -18,6 +18,7 @@ from leaderboard_page import show_season_leaderboard
 from chat_page import show_chat_room
 from wrong_answer_logic import show_wrong_answer_conquest
 from personal_record_logic import show_personal_records
+from utils import trigger_google_sheet_backup
 
 def main():
     st.set_page_config(
@@ -95,6 +96,22 @@ def main():
     else:
         # TAB_QUIZ (퀴즈 선택)
         show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse, get_kst_time)
+
+
+    with st.sidebar:
+        st.divider() # 구분선
+        st.subheader(" 시스템 관리")
+        
+        if st.button(" 구글 시트 즉시 백업", use_container_width=True):
+            with st.spinner("백업 파일 생성 중..."):
+                success, message = trigger_google_sheet_backup()
+                if success:
+                    st.success(" 백업이 완료되었습니다!")
+                else:
+                    st.error(f" 실패: {message}")
+
+
+
 
 if __name__ == "__main__":
     if "player_name" not in st.session_state:

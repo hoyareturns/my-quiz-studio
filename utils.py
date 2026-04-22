@@ -1,6 +1,7 @@
 import re
 import streamlit as st
 import google.generativeai as genai
+import requests
 
 def natural_sort_key(s):
     """문자열 내의 숫자를 숫자로 인식하여 정렬 (퀴즈2 < 퀴즈11)"""
@@ -79,7 +80,8 @@ def check_subjective_answer(user_ans, correct_ans_raw):
         3. 철자 엄격 제한 (중요): 의미가 통하더라도 철자 오타(Typos)가 단 하나라도 있으면 무조건 '오답'.
         - 예: VLOOKUP을 VLOOKP로 쓴 경우 -> 오답
         - 예: INDEX를 INDX로 쓴 경우 -> 오답
-        4. 수식/함수: 함수명이나 인자의 철자가 틀리면 문맥이 같아도 무조건 '오답'.
+        - 예: 호랑이를 호랭이로 쓴 경우 -> 오답
+        4. 수식/함수/명사: 함수명이나 인자의 철자가 틀리면 문맥이 같아도 무조건 '오답'.
 
         - 기준 정답: {correct_ans_raw}
         - 사용자의 답변: {user_ans}
@@ -195,3 +197,25 @@ def generate_quiz_with_ai(q_topic):
             continue
             
     raise Exception(f"모든 AI 모델 호출 실패. 마지막 에러: {last_error}")
+
+
+def trigger_google_sheet_backup():
+    """
+    구글 앱스 스크립트 웹 앱 URL을 호출하여 시트 백업을 실행합니다.
+    """
+    # 3단계에서 복사한 웹 앱 URL을 st.secrets에 저장했다고 가정합니다.
+    # 직접 문자열로 넣어도 되지만, 보안상 secrets.toml 사용을 권장합니다.
+    backup_url = st.secrets.get("GS_BACKUP_URL") 
+    
+    if not backup_url:
+        return False, "백업 URL이 설정되지 않았습니다."
+
+    try:
+        response = requests.get(backup_url)
+        if response.status_code == 200 and "Success" in response.text:
+            return True, "백업 성공"
+        else:
+            return False, f"백업 실패: {response.text}"
+    except Exception as e:
+        return False, f"연결 오류: {str(e)}"
+    
