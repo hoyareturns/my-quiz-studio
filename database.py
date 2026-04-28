@@ -95,18 +95,6 @@ def delete_quiz(title):
             return True
     return False
 
-def save_result(title, user, score, duration, wrongs):
-    res_ws = get_worksheet("Results")
-    if res_ws: 
-        res_ws.append_row([title, user, score, round(duration, 2), get_kst_time()])
-    if wrongs:
-        wr_ws = get_worksheet("WrongAnswers")
-        if wr_ws: 
-            [wr_ws.append_row([user, k, get_kst_time()]) for k in wrongs]
-    
-    # [핵심 로직] 성적 저장 즉시 캐시 강제 삭제
-    get_all_results.clear()
-
 # database.py 하단에 아래 내용을 추가해 주세요.
 
 def save_wrong_answers(quiz_title, user_name, wrong_questions):
@@ -197,13 +185,36 @@ def save_wrong_answers_detailed(quiz_title, category, player_name, wrong_items, 
 @st.cache_data(ttl=60)
 def get_unique_players():
     """Results 시트에서 중복 없는 유저 목록을 가져옵니다."""
-    ws = get_worksheet("Results") # 시트 탭 이름이 'Results'인지 확인하세요
+    ws = get_worksheet("Results")
     if ws:
         try:
             records = ws.get_all_records()
-            # 헤더 명칭을 'Name'에서 'User'로 변경
+            # [수정] 시트 헤더가 'User'이므로 'Name' 대신 'User'를 가져옵니다.
             names = list(set(str(r.get('User', '')).strip() for r in records if r.get('User')))
             return names
         except Exception as e:
             return []
     return []
+
+def save_result(title, user, score, duration, wrongs):
+    """결과 저장 시 점수와 시간을 반올림하여 저장합니다."""
+    res_ws = get_worksheet("Results")
+    if res_ws: 
+        # [수정] score와 duration을 int()로 감싸서 소수점을 완전히 제거합니다.
+        # 시트 순서: QuizTitle, User, Score, Duration, Time
+        res_ws.append_row([
+            title, 
+            user, 
+            int(score), 
+            int(duration), 
+            get_kst_time()
+        ])
+    
+    if wrongs:
+        wr_ws = get_worksheet("WrongAnswers")
+        if wr_ws: 
+            # 오답 기록 저장
+            [wr_ws.append_row([user, k, get_kst_time()]) for k in wrongs]
+    
+    # 성적 저장 즉시 캐시 강제 삭제 (기존 로직 유지)
+    get_all_results.clear()

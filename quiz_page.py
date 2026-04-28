@@ -152,24 +152,6 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
     if st.session_state.quiz_finished:
         render_results()
 
-# def score_logic(parsed, q_item, player_name):
-#     review_list, wrongs_results, wrongs_conquest = [], [], []
-#     for k, it in enumerate(parsed):
-#         u = st.session_state.user_answers.get(f"ans_{k}", "")
-#         c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
-        
-#         is_c = check_subjective_answer(u, it['a']) if it['o'] == ["주관식"] else (str(u) == str(c))
-        
-#         if not is_c:
-#             wrongs_results.append(it['k'])
-#             wrongs_conquest.append(it['q'])
-#             review_list.append({'idx': k+1, 'q': it['q'], 'u': u if u else "미입력", 'c': c, 'e': it['e']})
-    
-#     score = ((len(parsed)-len(review_list))/len(parsed))*100
-#     save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs_results)
-#     if wrongs_conquest: save_wrong_answers(q_item['Title'], player_name, wrongs_conquest)
-#     st.session_state.quiz_finished, st.session_state.last_score, st.session_state.review_data = True, score, review_list
-#     st.rerun()
 
 def score_logic(parsed, q_item, player_name, get_kst_time): # get_kst_time 인자 추가
     review_list, wrongs_results, wrongs_conquest = [], [], []
@@ -186,11 +168,17 @@ def score_logic(parsed, q_item, player_name, get_kst_time): # get_kst_time 인�
             wrongs_full_data.append(it)    # 신규 시트용 (전체 객체)
             review_list.append({'idx': k+1, 'q': it['q'], 'u': u if u else "미입력", 'c': c, 'e': it['e']})
     
-    score = ((len(parsed)-len(review_list))/len(parsed))*100
-    
-    # 1. 결과 저장 (기존)
-    save_result(q_item['Title'], player_name, score, time.time()-st.session_state.start_time, wrongs_results)
-    
+    score = round(((len(parsed)-len(review_list))/len(parsed))*100)
+
+    # 1. 결과 저장 시 소요 시간도 round()로 감싸서 반올림합니다.
+    save_result(
+        q_item['Title'], 
+        player_name, 
+        score, 
+        round(time.time() - st.session_state.start_time), 
+        wrongs_results
+    )
+
     # 2. 오답 정복 기능용 저장 (기존 유지)
     if wrongs_conquest: 
         save_wrong_answers(q_item['Title'], player_name, wrongs_conquest)
