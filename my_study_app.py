@@ -104,10 +104,11 @@ def main():
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
     season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
 
-    # 세션 상태 초기화
-    for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump']:
+    # [수정 후] 'results_saved' 추가
+    for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump', 'results_saved']:
         if k not in st.session_state: 
-            st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump'] else None
+            # results_saved의 기본값은 False로 설정되도록 로직에 포함됨
+            st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump', 'results_saved'] else None
 
     # --- [수정 완료] 조건 분기문 (ui_labels 대신 prompts 변수 직접 사용) ---
     if view_mode == TAB_RANK:
