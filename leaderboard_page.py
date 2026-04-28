@@ -5,7 +5,7 @@ from utils import natural_sort_key
 
 def show_season_leaderboard(season_res, season_start):
     """퀴즈별 상위 3위 표시 (자연어 정렬 적용)"""
-    st.subheader("구역별 최강자")
+    st.subheader("영역별 성취도 TOP3")
     st.caption(f"이번 시즌 시작일: {season_start[:10]}")
     
     if not season_res:

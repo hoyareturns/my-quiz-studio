@@ -4,7 +4,7 @@ from database import get_chats, save_chat
 def show_chat_room(player_name):
     st.markdown("<div id='chat_top_anchor'></div>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
-    c1.subheader("우정파괴채팅")
+    c1.subheader("학습 피드백 게시판")
     if c2.button("새로고침", key="chat_refresh"): 
         get_chats.clear()
         st.rerun()

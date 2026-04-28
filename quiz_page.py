@@ -116,7 +116,7 @@ def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_par
         
         # [복구] 상세 페이지 내 지배자들 랭킹 표시
         q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
-        with st.expander(" 이 구역의 지배자들", expanded=True):
+        with st.expander(" 성적 기록", expanded=True):
             if q_res:
                 s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
                 s_df.index = range(1, len(s_df) + 1)
