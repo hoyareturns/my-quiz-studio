@@ -196,14 +196,14 @@ def save_wrong_answers_detailed(quiz_title, category, player_name, wrong_items, 
 
 @st.cache_data(ttl=60)
 def get_unique_players():
-    """결과 시트에서 중복 없는 유저 목록을 가져옵니다."""
-    ws = get_worksheet("Results")
+    """Results 시트에서 중복 없는 유저 목록을 가져옵니다."""
+    ws = get_worksheet("Results") # 시트 탭 이름이 'Results'인지 확인하세요
     if ws:
         try:
-            # 모든 레코드를 가져와서 'Name' 컬럼만 추출
             records = ws.get_all_records()
-            names = list(set(str(r.get('Name', '')).strip() for r in records if r.get('Name')))
+            # 헤더 명칭을 'Name'에서 'User'로 변경
+            names = list(set(str(r.get('User', '')).strip() for r in records if r.get('User')))
             return names
-        except:
+        except Exception as e:
             return []
     return []
