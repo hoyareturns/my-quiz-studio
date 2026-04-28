@@ -4,8 +4,8 @@ import time
 import random
 
 # 1. 공통 데이터 및 유틸리티 관련
-from database import get_all_quizzes, get_all_results, get_settings, get_chats, save_quiz
-from utils import robust_parse, generate_quiz_with_ai
+from database import get_all_quizzes, get_all_results, get_settings, get_chats, save_quiz, get_unique_players
+from utils import robust_parse, generate_quiz_with_ai,trigger_google_sheet_backup, natural_sort_key # natural_sort_key 추가
 from prompts import VIEW_OPTIONS, APP_TITLE, TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, DEFAULT_CATEGORY
 from my_study_app_utils import get_kst_time, generate_qr_code, apply_custom_style
 
@@ -18,7 +18,7 @@ from leaderboard_page import show_season_leaderboard
 from chat_page import show_chat_room
 from wrong_answer_logic import show_wrong_answer_conquest
 from personal_record_logic import show_personal_records
-from utils import trigger_google_sheet_backup
+
 
 def main():
     st.set_page_config(
@@ -62,7 +62,32 @@ def main():
     with c1:
         st.markdown(f'<p class="title-text">{APP_TITLE}</p>', unsafe_allow_html=True)
     with c2:
-        st.session_state.player_name = st.text_input("아이디", value=st.session_state.player_name)
+        # 1. 기존 유저 목록 불러오기 및 정렬 (캐싱 활용)
+        if "cached_user_list" not in st.session_state:
+            # database.py에 추가하신 함수 호출
+            raw_users = get_unique_players() 
+            # utils.py의 natural_sort_key로 '유저2 < 유저11' 정렬 적용
+            st.session_state.cached_user_list = sorted(raw_users, key=natural_sort_key)
+
+        # 2. 드롭박스 선택 시 실행될 콜백 함수
+        def on_user_dropdown_change():
+            selected = st.session_state.user_dropdown_selection
+            if selected != "--- 기존 유저 선택 ---":
+                # 선택한 이름을 텍스트 입력창(session_state.player_name)에 즉시 반영
+                st.session_state.player_name = selected
+
+        # 3. 아이디 직접 입력창
+        # key="player_name"을 지정하면 st.session_state.player_name과 자동으로 동기화됩니다.
+        st.text_input("아이디", key="player_name", placeholder="이름을 입력하세요")
+
+        # 4. 기존 유저 선택 드롭박스 (입력창 바로 아래 배치)
+        st.selectbox(
+            "기존 유저 목록",
+            ["--- 기존 유저 선택 ---"] + st.session_state.cached_user_list,
+            key="user_dropdown_selection",
+            on_change=on_user_dropdown_change,
+            label_visibility="collapsed" # 불필요한 라벨을 숨겨 입력창에 밀착시킴
+        )
 
     st.write(""); st.write(""); st.write("")
 
