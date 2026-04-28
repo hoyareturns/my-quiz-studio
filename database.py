@@ -64,8 +64,26 @@ def save_chat(user, msg):
 
 @st.cache_data(ttl=10)
 def get_all_results():
-    ws = get_worksheet("Results", ["QuizTitle", "User", "Score", "Duration", "Time"])
-    if ws: return ws.get_all_records()
+    """Results 시트의 모든 데이터를 가져오며, 점수와 시간을 정수로 정리합니다."""
+    ws = get_worksheet("Results")
+    if ws:
+        try:
+            records = ws.get_all_records()
+            for r in records:
+                # 점수(Score) 처리: 소수점이 있다면 반올림 후 정수로 변환
+                if 'Score' in r and r['Score'] != "":
+                    try:
+                        r['Score'] = int(round(float(r['Score'])))
+                    except: pass
+                
+                # 시간(Duration) 처리: 소수점이 있다면 반올림 후 정수로 변환
+                if 'Duration' in r and r['Duration'] != "":
+                    try:
+                        r['Duration'] = int(round(float(r['Duration'])))
+                    except: pass
+            return records
+        except Exception as e:
+            return []
     return []
 
 def save_quiz(title, cat, content):
