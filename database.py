@@ -44,10 +44,19 @@ def get_settings():
 def save_setting(key, value):
     ws = get_worksheet("Settings")
     if ws:
-        cell = ws.find(key, in_column=1)
-        if cell: ws.update_cell(cell.row, 2, value)
-        else: ws.append_row([key, value])
-        get_settings.clear()
+        try:
+            cell = ws.find(key, in_column=1)
+            if cell: 
+                ws.update_cell(cell.row, 2, value)
+            else: 
+                ws.append_row([key, value])
+            get_settings.clear()
+            # --- [수정 포인트] 성공 시 두 개의 값을 리턴합니다 ---
+            return True, "설정이 성공적으로 저장되었습니다."
+        except Exception as e:
+            # --- [수정 포인트] 에러 발생 시에도 두 개의 값을 리턴합니다 ---
+            return False, f"저장 중 오류 발생: {str(e)}"
+    return False, "워크시트를 찾을 수 없습니다."
 
 @st.cache_data(ttl=10)
 def get_chats():
