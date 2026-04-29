@@ -26,8 +26,38 @@ def show_admin_sidebar(app_settings, get_kst_time):
                 else:
                     st.error(f" {msg}")
         
-        # st.divider() # 시각적 구분을 위한 선
         # --------------------------------------
+        # --- [추가] 순위표 노출 인원 설정 구역 ---
+        st.write("---")
+        st.subheader(" 순위표 노출 설정")
+        st.info("순위표 페이지의 '영역별 성취도' 섹션에 표시될 인원수를 설정합니다.")
+        
+        # 1. 현재 설정된 값 불러오기 (기본값 3)
+        # app_settings는 show_admin_sidebar의 인자로 전달받은 값을 활용합니다.
+        current_top_count = int(app_settings.get('top_achievers_count', 3))
+        
+        # 2. 숫자 입력 위젯
+        new_top_count = st.number_input(
+            "우수 성취자 노출 인원 (TOP N)", 
+            min_value=1, 
+            max_value=1000, 
+            value=current_top_count,
+            step=1,
+            help="모든 유저를 보고 싶다면 인원수를 넉넉하게 설정하세요."
+        )
+        
+        # 3. 설정 저장 버튼
+        if st.button("순위 노출 인원 설정 저장", use_container_width=True):
+            # database.py에서 임포트한 save_setting 함수를 사용합니다.
+            success, msg = save_setting("top_achievers_count", str(new_top_count))
+            if success:
+                st.success(f"설정 완료! 이제 순위표에 TOP {new_top_count}명이 표시됩니다.")
+                # 즉시 반영을 위해 앱 재실행
+                st.rerun()
+            else:
+                st.error(f"설정 저장 실패: {msg}")
+
+
 
         with st.expander(" 새 시즌 시작 (데이터 전체 초기화)", expanded=False):
             st.warning("이 작업은 '퀴즈 목록', '학습 결과', '오답 기록'을 모두 영구 삭제합니다. (복구 불가)")

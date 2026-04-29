@@ -112,7 +112,7 @@ def main():
 
     # --- [수정 완료] 조건 분기문 (ui_labels 대신 prompts 변수 직접 사용) ---
     if view_mode == TAB_RANK:
-        show_season_leaderboard(season_res, season_start)
+        show_season_leaderboard(season_res, season_start, app_settings)
     elif view_mode == TAB_REVIEW:
         show_wrong_answer_conquest(st.session_state.player_name, get_all_quizzes(), robust_parse)
     elif view_mode == TAB_CHAT:
