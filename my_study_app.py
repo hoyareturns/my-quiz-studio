@@ -36,7 +36,7 @@ def main():
         .main .block-container { padding-top: 5rem !important; }
         .title-text { font-size: 2.2rem; font-weight: 800; color: #ff4b4b; line-height: 1.2; }
         /* 라디오 버튼 간격 살짝 넓히기 (가독성 향상) */
-        div[role="radiogroup"] > label { margin-bottom: 20px !important;  }
+        div[role="radiogroup"] > label { margin-bottom: 15px !important;  }
         div[role="radiogroup"] > label:last-child { margin-bottom: 0px !important; }  
         </style>
     """, unsafe_allow_html=True)
