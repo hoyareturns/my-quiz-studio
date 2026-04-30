@@ -4,7 +4,7 @@ from database import get_unique_players
 
 def show_participation_status(season_res, all_quizzes):
     # 제목 (이모지 제거)
-    st.subheader("참여 현황 (퀴즈별 성취도)")
+    st.subheader(" ")
 
     # 1. 카테고리 목록 추출
     categories = sorted(list(set(q.get('Category', '미분류') for q in all_quizzes if q.get('Category'))))
