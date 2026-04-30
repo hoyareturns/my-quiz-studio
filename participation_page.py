@@ -84,4 +84,10 @@ def show_participation_status(season_res, all_quizzes):
         pivot_df[col] = pivot_df[col].apply(lambda x: "완료" if x != "-" else "-")
 
     pivot_df.index.name = "사용자 ID"
-    st.dataframe(pivot_df, use_container_width=True)
+    # [수정] height 파라미터를 추가하여 기본 노출 높이를 늘립니다.
+    # 750px는 대략 20~22개 행을 한 화면에 보여주기에 적당한 높이입니다.
+    st.dataframe(
+        pivot_df, 
+        use_container_width=True, 
+        height=750  # 이 부분을 추가/수정하세요.
+    )
