@@ -98,22 +98,22 @@ def main():
     if 'main_menu' not in st.session_state:
         st.session_state.main_menu = TAB_QUIZ
 
-st.subheader("📁 카테고리 활성화 (토글)")
-all_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
+    st.subheader("📁 카테고리 활성화 (토글)")
+    all_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
 
-# 세션 스테이트를 사용하여 선택된 카테고리 저장
-if 'active_categories' not in st.session_state:
-    st.session_state.active_categories = all_cats
+    # 세션 스테이트를 사용하여 선택된 카테고리 저장
+    if 'active_categories' not in st.session_state:
+        st.session_state.active_categories = all_cats
 
-cols = st.columns(len(all_cats))
-for i, cat in enumerate(all_cats):
-    with cols[i]:
-        # 각 카테고리를 토글 스위치로 배치
-        is_on = st.toggle(cat, value=(cat in st.session_state.active_categories), key=f"tog_{cat}")
-        if is_on and cat not in st.session_state.active_categories:
-            st.session_state.active_categories.append(cat)
-        elif not is_on and cat in st.session_state.active_categories:
-            st.session_state.active_categories.remove(cat)
+    cols = st.columns(len(all_cats))
+    for i, cat in enumerate(all_cats):
+        with cols[i]:
+            # 각 카테고리를 토글 스위치로 배치
+            is_on = st.toggle(cat, value=(cat in st.session_state.active_categories), key=f"tog_{cat}")
+            if is_on and cat not in st.session_state.active_categories:
+                st.session_state.active_categories.append(cat)
+            elif not is_on and cat in st.session_state.active_categories:
+                st.session_state.active_categories.remove(cat)
 
     st.write("---")
 
