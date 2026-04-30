@@ -51,8 +51,8 @@ TAB_RECORDS = "개인 기록"          # 유지
 TAB_RANK = "우수 성취자"           # 기존: 구역별 최강자
 TAB_CHAT = "토론방"           # 기존: 우정파괴채팅
 DEFAULT_CATEGORY = "공통 역량"     # 기존: 우정퀴즈 (기본 표시 카테고리)
+TAB_PARTICIPATION = "참여현황"  # <-- 신규 추가
 
 # 메뉴 탭 순서 설정 (위에서 만든 변수들을 활용)
-VIEW_OPTIONS = [TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT]
-# VIEW_OPTIONS = ["퀴즈 선택", "오답 정복", "개인 기록", "구역별 최강자", "우정파괴채팅"]
+VIEW_OPTIONS = [TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, TAB_PARTICIPATION]
 FEEDBACK_MODES = ["실시간 팩폭", "최후의 심판"]

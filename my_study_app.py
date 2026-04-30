@@ -6,7 +6,7 @@ import random
 # 1. 공통 데이터 및 유틸리티 관련
 from database import get_all_quizzes, get_all_results, get_settings, get_chats, save_quiz, get_unique_players
 from utils import robust_parse, generate_quiz_with_ai,trigger_google_sheet_backup, natural_sort_key # natural_sort_key 추가
-from prompts import VIEW_OPTIONS, APP_TITLE, TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, DEFAULT_CATEGORY
+from prompts import VIEW_OPTIONS, APP_TITLE, TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, DEFAULT_CATEGORY, TAB_PARTICIPATION
 from my_study_app_utils import get_kst_time, generate_qr_code, apply_custom_style
 
 # 2. 관리자 화면 관련
@@ -18,6 +18,7 @@ from leaderboard_page import show_season_leaderboard
 from chat_page import show_chat_room
 from wrong_answer_logic import show_wrong_answer_conquest
 from personal_record_logic import show_personal_records
+from participation_page import show_participation_status
 
 
 def main():
@@ -93,14 +94,30 @@ def main():
 
     # 기본 탭 설정
     default_view = app_settings.get('default_view', TAB_QUIZ)
-    def_idx = VIEW_OPTIONS.index(default_view) if default_view in VIEW_OPTIONS else 0
 
-    view_mode = st.radio(
-        "탭", VIEW_OPTIONS, horizontal=True, label_visibility="collapsed", index=def_idx, key="main_tab_selector"
-    )
+    if 'main_menu' not in st.session_state:
+        st.session_state.main_menu = TAB_QUIZ
+
+    # 2. 2개씩 한 줄로 배치되는 그리드 메뉴
+    st.write("---")
+    m_col1, m_col2 = st.columns(2)
+
+    # 각 메뉴 버튼 생성 및 강조 효과
+    def menu_btn(label, col):
+        with col:
+            is_selected = st.session_state.main_menu == label
+            if st.button(label, use_container_width=True, type="primary" if is_selected else "secondary"):
+                st.session_state.main_menu = label
+                st.rerun()
+
+    # 행별 메뉴 배치
+    menu_btn(TAB_QUIZ, m_col1);    menu_btn(TAB_REVIEW, m_col2)    # 1행: 역량 점검, 오답 정복
+    menu_btn(TAB_RECORDS, m_col1); menu_btn(TAB_RANK, m_col2)      # 2행: 개인기록, 우수 성취자
+    menu_btn(TAB_CHAT, m_col1);    menu_btn(TAB_PARTICIPATION, m_col2) # 3행: 변수로 변경
+
+    view_mode = st.session_state.main_menu
+    st.write("---")
     
-    st.write("") 
-
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
     season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
 
@@ -118,11 +135,11 @@ def main():
     elif view_mode == TAB_CHAT:
         show_chat_room(st.session_state.player_name)
     elif view_mode == TAB_RECORDS:
-        show_personal_records(st.session_state.player_name, get_all_results())
-    else:
-        # TAB_QUIZ (퀴즈 선택)
+        show_personal_records(st.session_state.player_name, season_res)
+    elif view_mode == TAB_QUIZ:
         show_quiz_area(get_all_quizzes(), season_res, app_settings, st.session_state.player_name, robust_parse, get_kst_time)
-
+    elif view_mode == TAB_PARTICIPATION: # <-- 변수로 변경
+        show_participation_status(season_res)
 
 if __name__ == "__main__":
     if "player_name" not in st.session_state:
