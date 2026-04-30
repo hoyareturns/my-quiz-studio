@@ -36,7 +36,15 @@ def main():
         .main .block-container { padding-top: 5rem !important; }
         .title-text { font-size: 2.2rem; font-weight: 800; color: #ff4b4b; line-height: 1.2; }
         /* 라디오 버튼을 가로 토글 탭처럼 보이게 여백 조정 */
-        div.row-widget.stRadio > div { flex-direction: row; flex-wrap: wrap; gap: 15px; justify-content: center; }
+        div.row-widget.stRadio > div[role="radiogroup"] { 
+            display: grid !important; 
+            grid-template-columns: repeat(2, 1fr) !important; /* 딱 2열로 나눔 */
+            gap: 15px !important; 
+        }
+        /* 각 버튼이 칸 안에서 중앙에 오도록 정렬 (선택 사항) */
+        div.row-widget.stRadio > div[role="radiogroup"] > label {
+            justify-content: center !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
