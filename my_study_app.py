@@ -29,22 +29,14 @@ def main():
 
     apply_custom_style()
     
-    # CSS 설정 (불필요한 여백 제거 및 디자인)
+    # CSS 설정 (꼬이게 만들던 레이아웃 꼼수 제거, 깔끔한 기본 스타일 유지)
     st.markdown("""
         <style>
         header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; pointer-events: none !important; }
         .main .block-container { padding-top: 5rem !important; }
         .title-text { font-size: 2.2rem; font-weight: 800; color: #ff4b4b; line-height: 1.2; }
-        /* 라디오 버튼을 가로 토글 탭처럼 보이게 여백 조정 */
-        div.row-widget.stRadio > div[role="radiogroup"] { 
-            display: grid !important; 
-            grid-template-columns: repeat(2, 1fr) !important; /* 딱 2열로 나눔 */
-            gap: 15px !important; 
-        }
-        /* 각 버튼이 칸 안에서 중앙에 오도록 정렬 (선택 사항) */
-        div.row-widget.stRadio > div[role="radiogroup"] > label {
-            justify-content: center !important;
-        }
+        /* 라디오 버튼 간격 살짝 넓히기 (가독성 향상) */
+        div.row-widget.stRadio > div { gap: 10px; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -83,23 +75,24 @@ def main():
 
     st.write("---")
 
-    # [수정 핵심] 동시에 선택되지 않는 단일 메뉴 토글 (라디오 그룹)
+    # [핵심 수정 1] 초기값 설정
     if 'main_menu' not in st.session_state:
         st.session_state.main_menu = TAB_QUIZ
 
     menu_options = [TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, TAB_PARTICIPATION]
 
-    # 라디오 버튼(단일 선택)을 가로(horizontal)로 배치하여 토글 탭처럼 구성
-    view_mode = st.radio(
+    # [핵심 수정 2] 라디오 버튼 렌더링 (더블클릭 버그 해결 & 세로 배치)
+    # key="main_menu"를 사용하면 라디오 버튼을 누르는 즉시 session_state.main_menu 값이 변경됨
+    st.radio(
         "메뉴를 선택하세요",
         options=menu_options,
-        index=menu_options.index(st.session_state.main_menu) if st.session_state.main_menu in menu_options else 0,
-        horizontal=True,
-        label_visibility="collapsed" # "메뉴를 선택하세요" 글씨 숨김
+        key="main_menu",             # 이 속성이 더블 클릭 버그를 완벽히 해결합니다.
+        label_visibility="collapsed" # 라벨 숨김
+        # horizontal=True 를 삭제하여 자연스러운 세로 1줄 배치로 복구
     )
     
-    # 선택된 메뉴를 세션에 저장
-    st.session_state.main_menu = view_mode
+    # 렌더링 이후 선택된 값을 가져옴
+    view_mode = st.session_state.main_menu
 
     st.write("---")
     
@@ -113,7 +106,7 @@ def main():
         if k not in st.session_state: 
             st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump', 'results_saved'] else None
 
-    # 선택된 탭(토글)에 따른 화면 출력
+    # 선택된 메뉴(라디오 버튼 상태)에 따른 화면 출력
     if view_mode == TAB_RANK:
         show_season_leaderboard(season_res, season_start, app_settings)
     elif view_mode == TAB_REVIEW:
