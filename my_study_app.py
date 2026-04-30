@@ -39,7 +39,7 @@ def main():
         div.row-widget.stRadio > div[role="radiogroup"] { 
             display: flex !important;
             flex-direction: column !important;
-            gap: 20px !important; /* 🔥 이 숫자를 조절하세요 (예: 15px, 20px, 30px) */
+            gap: 40px !important; /* 🔥 이 숫자를 조절하세요 (예: 15px, 20px, 30px) */
         }
         </style>
     """, unsafe_allow_html=True)
@@ -122,7 +122,7 @@ def main():
     elif view_mode == TAB_QUIZ:
         show_quiz_area(all_quizzes, season_res, app_settings, st.session_state.player_name, robust_parse, get_kst_time)
     elif view_mode == TAB_PARTICIPATION:
-        show_participation_status(season_res)
+        show_participation_status(season_res, all_quizzes)
 
 if __name__ == "__main__":
     if "player_name" not in st.session_state:

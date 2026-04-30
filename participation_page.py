@@ -1,60 +1,46 @@
-# participation_page.py 수정
 import streamlit as st
 import pandas as pd
 
 def show_participation_status(season_res, all_quizzes):
-    st.subheader(" 전체 참여 현황 분석")
+    st.subheader(" 참여 현황")
+
+    # 1. 퀴즈 데이터에서 유효한 카테고리(그룹) 목록만 추출
+    categories = sorted(list(set(q.get('Category', '미분류') for q in all_quizzes if q.get('Category'))))
+    category_options = ["전체 퀴즈"] + categories
     
-    if not season_res:
-        st.info("기록된 참여 현황이 없습니다.")
+    # 카테고리 선택 드롭박스 생성
+    selected_cat = st.selectbox("📂 퀴즈 그룹 선택", category_options)
+
+    # 2. 선택된 그룹에 따라 결과 데이터(season_res) 필터링
+    if selected_cat == "전체 퀴즈":
+        display_res = season_res
+    else:
+        # 1단계: 선택한 카테고리에 속한 퀴즈들의 '제목(Title)' 리스트를 뽑아냄
+        target_quiz_titles = [q.get('Title') for q in all_quizzes if q.get('Category', '미분류') == selected_cat]
+        
+        # 2단계: 결과 데이터(season_res) 중에서 위에서 뽑은 퀴즈 제목과 일치하는 기록만 남김
+        display_res = [r for r in season_res if r.get('QuizTitle') in target_quiz_titles]
+
+    st.write("---")
+
+    # 3. 데이터 시각화 및 예외 처리
+    if not display_res:
+        st.info(f"'{selected_cat}' 그룹에 해당하는 참여 기록이 없습니다.")
         return
 
-    # 1. 퀴즈명-카테고리 매핑 딕셔너리 생성
-    quiz_to_cat = {q['Title']: q.get('Category', '미분류') for q in all_quizzes}
-    categories = sorted(list(set(quiz_to_cat.values())))
+    # 필터링된 결과를 판다스 데이터프레임으로 변환
+    df = pd.DataFrame(display_res)
     
-    # 2. 드롭박스(필터) 생성
-    # [전체] 옵션을 가장 아래가 아닌 관례상 가장 위에 두거나, 원하시는 대로 아래에 배치 가능합니다.
-    filter_options = categories + ["전체"]
-    selected_cat = st.selectbox("📂 카테고리 필터", filter_options, index=len(filter_options)-1)
-
-    # 3. 데이터프레임 생성 및 데이터 정리
-    df = pd.DataFrame(season_res)
-    
-    # 카테고리 정보 병합
-    df['Category'] = df['QuizTitle'].map(quiz_to_cat).fillna('미분류')
-    
-    # 필터 적용
-    if selected_cat != "전체":
-        df = df[df['Category'] == selected_cat]
-
-    if df.empty:
-        st.warning(f"'{selected_cat}' 카테고리에 해당하는 참여 기록이 없습니다.")
-        return
-
-    # 4. 출력용 데이터 정리 (이미지 양식 기준)
-    df = df.sort_values(by='Time', ascending=False)
-    
-    display_df = df.copy()
-    display_df['Score'] = display_df['Score'].apply(lambda x: f"{int(float(x))}점")
-    display_df['Duration'] = display_df['Duration'].apply(lambda x: f"{int(float(x))}초")
-
-    column_map = {
-        'User': '사용자 ID',
-        'QuizTitle': '퀴즈 명칭',
-        'Score': '취득 점수',
-        'Duration': '소요 시간',
-        'Time': '완료 일시'
-    }
-    
-    display_df = display_df[list(column_map.keys())].rename(columns=column_map)
-
-    # 5. 테이블 출력
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "완료 일시": st.column_config.DatetimeColumn("완료 일시", format="YYYY-MM-DD HH:mm"),
-        }
-    )
+    # 'User' 컬럼이 시트에 정상적으로 존재하는지 확인 후 집계
+    if 'User' in df.columns:
+        # 사용자별 참여 횟수 카운트 및 내림차순 정렬
+        participation_counts = df['User'].value_counts().reset_index()
+        participation_counts.columns = ['사용자(ID)', '참여 횟수(회)']
+        
+        # 상단 요약 정보 출력
+        st.success(f"🔍 **{selected_cat}** 요약: 총 **{len(df)}**회 참여 / 고유 참여자 **{len(participation_counts)}**명")
+        
+        # 깔끔한 표 형태로 화면에 출력
+        st.dataframe(participation_counts, use_container_width=True, hide_index=True)
+    else:
+        st.warning("데이터에 'User' 컬럼이 없어 집계할 수 없습니다. Results 시트의 헤더를 확인해주세요.")
