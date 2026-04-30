@@ -98,22 +98,38 @@ def main():
     if 'main_menu' not in st.session_state:
         st.session_state.main_menu = TAB_QUIZ
 
-    # 2. 2개씩 한 줄로 배치되는 그리드 메뉴
+    st.subheader("📁 카테고리 활성화 (토글)")
+    all_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
+
+    # 세션 스테이트를 사용하여 선택된 카테고리 저장
+    if 'active_categories' not in st.session_state:
+        st.session_state.active_categories = all_cats
+
+    cols = st.columns(len(all_cats))
+    for i, cat in enumerate(all_cats):
+        with cols[i]:
+            # 각 카테고리를 토글 스위치로 배치
+            is_on = st.toggle(cat, value=(cat in st.session_state.active_categories), key=f"tog_{cat}")
+            if is_on and cat not in st.session_state.active_categories:
+                st.session_state.active_categories.append(cat)
+            elif not is_on and cat in st.session_state.active_categories:
+                st.session_state.active_categories.remove(cat)
+
     st.write("---")
-    m_col1, m_col2 = st.columns(2)
 
     # 각 메뉴 버튼 생성 및 강조 효과
     def menu_btn(label, col):
         with col:
-            is_selected = st.session_state.main_menu == label
+            # 현재 선택된 메뉴인 경우 'primary' 색상으로 강조
+            is_selected = st.session_state.get('main_menu') == label
             if st.button(label, use_container_width=True, type="primary" if is_selected else "secondary"):
                 st.session_state.main_menu = label
                 st.rerun()
 
-    # 행별 메뉴 배치
-    menu_btn(TAB_QUIZ, m_col1);    menu_btn(TAB_REVIEW, m_col2)    # 1행: 역량 점검, 오답 정복
-    menu_btn(TAB_RECORDS, m_col1); menu_btn(TAB_RANK, m_col2)      # 2행: 개인기록, 우수 성취자
-    menu_btn(TAB_CHAT, m_col1);    menu_btn(TAB_PARTICIPATION, m_col2) # 3행: 변수로 변경
+    # 행별 메뉴 배치 (사용자 요청 변수 적용)
+    menu_btn(TAB_QUIZ, m_col1);          menu_btn(TAB_REVIEW, m_col2)      # 1행
+    menu_btn(TAB_RECORDS, m_col1);       menu_btn(TAB_RANK, m_col2)        # 2행
+    menu_btn(TAB_CHAT, m_col1);          menu_btn(TAB_PARTICIPATION, m_col2) # 3행
 
     view_mode = st.session_state.main_menu
     st.write("---")
