@@ -35,8 +35,8 @@ def main():
         header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; pointer-events: none !important; }
         .main .block-container { padding-top: 5rem !important; }
         .title-text { font-size: 2.2rem; font-weight: 800; color: #ff4b4b; line-height: 1.2; }
-        /* 토글 레이아웃 정렬 */
-        div[data-testid="stCheckbox"] { margin-bottom: 0px; }
+        /* 라디오 버튼을 가로 토글 탭처럼 보이게 여백 조정 */
+        div.row-widget.stRadio > div { flex-direction: row; flex-wrap: wrap; gap: 15px; justify-content: center; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -75,30 +75,24 @@ def main():
 
     st.write("---")
 
-    # [수정 핵심] 메인 메뉴를 2열 구조의 '토글' 스위치로 변경
+    # [수정 핵심] 동시에 선택되지 않는 단일 메뉴 토글 (라디오 그룹)
     if 'main_menu' not in st.session_state:
         st.session_state.main_menu = TAB_QUIZ
 
-    m_col1, m_col2 = st.columns(2)
+    menu_options = [TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, TAB_PARTICIPATION]
 
-    def menu_toggle(label, col):
-        with col:
-            # 현재 선택된 메뉴라면 토글이 On 상태로 표시됨
-            is_on = st.toggle(label, value=(st.session_state.main_menu == label), key=f"tgl_{label}")
-            # 토글을 새로 켜면 해당 메뉴로 변경하고 앱 재실행
-            if is_on and st.session_state.main_menu != label:
-                st.session_state.main_menu = label
-                st.rerun()
+    # 라디오 버튼(단일 선택)을 가로(horizontal)로 배치하여 토글 탭처럼 구성
+    view_mode = st.radio(
+        "메뉴를 선택하세요",
+        options=menu_options,
+        index=menu_options.index(st.session_state.main_menu) if st.session_state.main_menu in menu_options else 0,
+        horizontal=True,
+        label_visibility="collapsed" # "메뉴를 선택하세요" 글씨 숨김
+    )
+    
+    # 선택된 메뉴를 세션에 저장
+    st.session_state.main_menu = view_mode
 
-    # 6개 메뉴를 이미지와 동일한 순서로 배치
-    menu_toggle(TAB_QUIZ, m_col1)          # 역량 점검
-    menu_toggle(TAB_REVIEW, m_col2)        # 오답 정복
-    menu_toggle(TAB_RECORDS, m_col1)       # 개인 기록
-    menu_toggle(TAB_RANK, m_col2)          # 우수 성취자
-    menu_toggle(TAB_CHAT, m_col1)          # 토론방
-    menu_toggle(TAB_PARTICIPATION, m_col2) # 참여현황
-
-    view_mode = st.session_state.main_menu
     st.write("---")
     
     # 데이터 로드
@@ -111,7 +105,7 @@ def main():
         if k not in st.session_state: 
             st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump', 'results_saved'] else None
 
-    # 선택된 메뉴(토글 상태)에 따른 화면 출력
+    # 선택된 탭(토글)에 따른 화면 출력
     if view_mode == TAB_RANK:
         show_season_leaderboard(season_res, season_start, app_settings)
     elif view_mode == TAB_REVIEW:
