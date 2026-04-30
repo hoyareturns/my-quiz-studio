@@ -115,7 +115,7 @@ for i, cat in enumerate(all_cats):
         elif not is_on and cat in st.session_state.active_categories:
             st.session_state.active_categories.remove(cat)
 
-st.write("---")
+    st.write("---")
 
     # 각 메뉴 버튼 생성 및 강조 효과
     def menu_btn(label, col):
