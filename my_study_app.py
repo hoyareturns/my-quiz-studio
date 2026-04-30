@@ -36,7 +36,11 @@ def main():
         .main .block-container { padding-top: 5rem !important; }
         .title-text { font-size: 2.2rem; font-weight: 800; color: #ff4b4b; line-height: 1.2; }
         /* 라디오 버튼 간격 살짝 넓히기 (가독성 향상) */
-        div.row-widget.stRadio > div { gap: 10px; }
+        div.row-widget.stRadio > div[role="radiogroup"] { 
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 20px !important; /* 🔥 이 숫자를 조절하세요 (예: 15px, 20px, 30px) */
+        }
         </style>
     """, unsafe_allow_html=True)
 
