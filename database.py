@@ -5,6 +5,23 @@ from datetime import datetime, timedelta
 from collections import Counter
 import re
 
+def restore_database_from_backup(backup_filename):
+    """
+    백업 파일(구글 시트)의 데이터를 읽어와 현재 운영 시트로 덮어씁니다.
+    """
+    # 1. 원본 시트 연결
+    client = get_gspread_client()
+    # 2. 백업 파일 열기 (사용자가 입력한 이름으로)
+    backup_sheet = client.open(backup_filename)
+    
+    # 3. 데이터 복사 (Results, Quizzes 등 필요한 시트별로 반복)
+    for sheet_name in ["Results", "Quizzes"]:
+        data = backup_sheet.worksheet(sheet_name).get_all_values()
+        target_ws = get_worksheet(sheet_name)
+        target_ws.clear() # 기존 데이터 삭제
+        target_ws.update(data) # 새 데이터 붙여넣기
+    return True
+
 def get_kst_time():
     return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
 

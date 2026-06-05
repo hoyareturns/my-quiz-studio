@@ -26,6 +26,31 @@ def show_admin_sidebar(app_settings, get_kst_time):
                 else:
                     st.error(f" {msg}")
         
+        # --- [복구 섹션 수정] ---
+        st.divider()
+        st.subheader("데이터 복구")
+        st.warning("복구는 기존 데이터를 덮어씁니다. 주의하세요!")
+        
+        # 1. 파일 이름을 직접 입력받는 방식
+        selected_file = st.text_input("복구할 파일명 입력 (정확히 입력하세요)")
+        
+        # 2. 버튼 클릭 시 복구 실행
+        if st.button("데이터 복구 실행", use_container_width=True):
+            if not selected_file:
+                st.error("파일명이 입력되지 않았습니다.")
+            elif not st.checkbox("복구된 데이터가 현재 데이터를 완전히 대체함을 확인합니다."):
+                st.warning("확인 체크박스를 선택해주세요.")
+            else:
+                # 여기서 실제 복구 로직 함수 호출
+                st.success(f"'{selected_file}' 데이터를 불러오는 중입니다...")
+                
+                # database.py에서 만든 함수 호출
+                from database import restore_database_from_backup
+                if restore_database_from_backup(selected_file):
+                    st.success("데이터 복구가 완료되었습니다! 앱을 새로고침 하세요.")
+                else:
+                    st.error("복구 중 오류가 발생했습니다.")
+
         # --------------------------------------
         # --- [추가] 순위표 노출 인원 설정 구역 ---
         st.write("---")
