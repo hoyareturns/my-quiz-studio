@@ -26,38 +26,47 @@ def restore_database_from_backup(backup_filename):
     try:
         backup_sheet = drive_client.open(backup_filename)
         main_sheet = get_gspread_client()
-        backup_ws = backup_sheet.worksheet("Results")
         
-        # 1. 원본 데이터 로드
-        data = backup_ws.get_all_values()
-        header = data[0]
+        # 1. Results 시트 처리 (사용자 정의 규칙 적용)
+        results_ws = backup_sheet.worksheet("Results")
+        results_data = results_ws.get_all_values(value_render_option='UNFORMATTED_VALUE')
         
-        # 2. 데이터 가공
-        processed_rows = []
-        for row in data[1:]:
+        cleaned_results = []
+        for row in results_data[1:]: # 헤더 제외
             new_row = []
-            for i, cell_value in enumerate(row):
-                header_name = header[i]
+            for i, val in enumerate(row):
+                # 모든 값에서 작은따옴표 제거 후 공백 정리
+                clean_val = str(val).replace("'", "").strip()
                 
-                # Score와 Duration 열만 강제 숫자 변환
-                if header_name in ['Score', 'Duration']:
-                    # 작은따옴표 제거 후 숫자로 변환 (실패 시 0)
-                    clean_val = str(cell_value).replace("'", "").strip()
-                    new_row.append(int(clean_val) if clean_val.isdigit() else 0)
+                # E열(인덱스 4)인 경우 날짜 포맷을 위해 앞에 ' 추가
+                if i == 4:
+                    new_row.append(f"'{clean_val}")
                 else:
-                    # 나머지(날짜 등)는 원본 그대로 (작은따옴표가 있으면 그대로 들어감)
-                    new_row.append(cell_value)
-                    
-            processed_rows.append(new_row)
-            
-        # 3. 운영 시트 업데이트
-        target_ws = main_sheet.worksheet("Results")
-        target_ws.delete_rows(2, target_ws.row_count)
+                    new_row.append(clean_val)
+            cleaned_results.append(new_row)
         
-        # 숫자 컬럼은 USER_ENTERED로 숫자 인식, 날짜는 그대로 입력
-        target_ws.append_rows(processed_rows, value_input_option='USER_ENTERED')
+        target_results = main_sheet.worksheet("Results")
+        target_results.delete_rows(2, target_results.row_count)
+        if cleaned_results:
+            target_results.append_rows(cleaned_results, value_input_option='RAW')
+
+        # 2. 나머지 모든 시트 처리 (별도 규칙 없이 원본 그대로)
+        all_sheets = backup_sheet.worksheets()
+        for ws in all_sheets:
+            if ws.title == "Results":
+                continue
+            
+            # 원본 데이터 그대로 가져오기
+            data = ws.get_all_values(value_render_option='UNFORMATTED_VALUE')
+            
+            # 운영 시트에 반영
+            target_ws = main_sheet.worksheet(ws.title)
+            target_ws.delete_rows(2, target_ws.row_count)
+            if len(data) > 1:
+                target_ws.append_rows(data[1:], value_input_option='RAW')
             
         return True
+        
     except Exception as e:
         st.error(f"복구 에러: {e}")
         return False
