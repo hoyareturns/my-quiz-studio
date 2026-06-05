@@ -28,22 +28,30 @@ def restore_database_from_backup(backup_filename):
         
         for sheet_name in ["Results"]:
             backup_ws = backup_sheet.worksheet(sheet_name)
-            # 1. 데이터를 가져옵니다.
-            data = backup_ws.get_all_records()
+            data = backup_ws.get_all_values() # 헤더 포함 리스트
             
-            # 2. [수정] 성적 기록에 필요한 컬럼을 강제 숫자화
-            for row in data:
-                if 'Score' in row: row['Score'] = int(row['Score']) if str(row['Score']).replace("'", "").isdigit() else 0
-                if 'Duration' in row: row['Duration'] = int(row['Duration']) if str(row['Duration']).replace("'", "").isdigit() else 0
+            # --- [최종 클리닝] ---
+            # 1. 헤더에서 공백 제거
+            header = [h.strip() for h in data[0]]
             
-            # 3. 판다스를 이용해 깔끔하게 다시 씁니다.
-            import pandas as pd
-            df = pd.DataFrame(data)
+            # 2. 데이터 행들에서 숫자 변환 및 공백 제거
+            cleaned_rows = []
+            for row in data[1:]:
+                new_row = []
+                for i, val in enumerate(row):
+                    clean_val = str(val).replace("'", "").strip()
+                    # Score와 Duration 컬럼(인덱스 기준)이면 숫자로 변환
+                    if i in [2, 3] and clean_val.isdigit():
+                        new_row.append(int(clean_val))
+                    else:
+                        new_row.append(clean_val)
+                cleaned_rows.append(new_row)
+            # --------------------
             
             target_ws = main_sheet.worksheet(sheet_name)
-            # 헤더 삭제 없이 전체 덮어쓰기 (clear 사용 안 함)
             target_ws.delete_rows(2, target_ws.row_count)
-            target_ws.update([df.columns.values.tolist()] + df.values.tolist(), value_input_option='USER_ENTERED')
+            # 클리닝된 헤더 + 데이터 입력
+            target_ws.update([header] + cleaned_rows, value_input_option='USER_ENTERED')
             
         return True
     except Exception as e:
