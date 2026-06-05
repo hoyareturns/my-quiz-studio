@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta
 from collections import Counter
 import re
+import pandas as pd
 
 # 1. 기존 드라이브 전체 관리용 (새로 추가)
 @st.cache_resource
@@ -26,32 +27,22 @@ def restore_database_from_backup(backup_filename):
         backup_sheet = drive_client.open(backup_filename)
         main_sheet = get_gspread_client()
         
-        for sheet_name in ["Results"]:
-            backup_ws = backup_sheet.worksheet(sheet_name)
-            data = backup_ws.get_all_values() # 헤더 포함 리스트
-            
-            # --- [최종 클리닝] ---
-            # 1. 헤더에서 공백 제거
-            header = [h.strip() for h in data[0]]
-            
-            # 2. 데이터 행들에서 숫자 변환 및 공백 제거
-            cleaned_rows = []
-            for row in data[1:]:
-                new_row = []
-                for i, val in enumerate(row):
-                    clean_val = str(val).replace("'", "").strip()
-                    # Score와 Duration 컬럼(인덱스 기준)이면 숫자로 변환
-                    if i in [2, 3] and clean_val.isdigit():
-                        new_row.append(int(clean_val))
-                    else:
-                        new_row.append(clean_val)
-                cleaned_rows.append(new_row)
-            # --------------------
-            
-            target_ws = main_sheet.worksheet(sheet_name)
-            target_ws.delete_rows(2, target_ws.row_count)
-            # 클리닝된 헤더 + 데이터 입력
-            target_ws.update([header] + cleaned_rows, value_input_option='USER_ENTERED')
+        # 'Results' 시트만 집중 공략
+        backup_ws = backup_sheet.worksheet("Results")
+        # 1. 헤더 포함 전체 데이터 로드
+        data = backup_ws.get_all_values()
+        df = pd.DataFrame(data[1:], columns=data[0])
+        
+        # 2. [핵심] 숫자형 강제 변환 (성적 기록이 뜨게 하려면 필수)
+        df['Score'] = pd.to_numeric(df['Score'].astype(str).str.replace("'", ""), errors='coerce').fillna(0).astype(int)
+        df['Duration'] = pd.to_numeric(df['Duration'].astype(str).str.replace("'", ""), errors='coerce').fillna(0).astype(int)
+        
+        # 3. 데이터 업데이트
+        target_ws = main_sheet.worksheet("Results")
+        target_ws.delete_rows(2, target_ws.row_count) # 2행부터 삭제
+        
+        # 헤더 + 데이터 업데이트
+        target_ws.update([df.columns.values.tolist()] + df.values.tolist(), value_input_option='USER_ENTERED')
             
         return True
     except Exception as e:
