@@ -21,31 +21,34 @@ def get_gspread_client():
 
 # 3. 복구 함수 수정
 def restore_database_from_backup(backup_filename):
-    """경로(이름)로 파일을 찾고 복구합니다."""
-    # [핵심] get_gspread_client()를 쓰지 않고 drive_client를 사용!
-    drive_client = get_gspread_drive_client() 
+    drive_client = get_gspread_drive_client()
     
     try:
-        # 1. 파일 이름으로 드라이브에서 파일 검색 및 열기
-        # .open()은 드라이브 객체에만 존재합니다.
         backup_sheet = drive_client.open(backup_filename)
-        
-        # 2. 운영 시트 연결 (기존 시트 작업용 클라이언트)
         main_sheet = get_gspread_client()
         
-        # 3. 데이터 복구
         for sheet_name in ["Results", "Quizzes"]:
-            data = backup_sheet.worksheet(sheet_name).get_all_values()
+            backup_ws = backup_sheet.worksheet(sheet_name)
+            data = backup_ws.get_all_values()
+            
+            # --- [자동 처리 로직] ---
+            # 모든 셀에서 작은따옴표만 제거하고 보냅니다.
+            cleaned_data = []
+            for row in data:
+                cleaned_row = [str(cell).replace("'", "").strip() for cell in row]
+                cleaned_data.append(cleaned_row)
+            # ----------------------
+            
             target_ws = main_sheet.worksheet(sheet_name)
             target_ws.clear()
-            target_ws.update(data)
+            
+            # [핵심] value_input_option='USER_ENTERED' 추가!
+            # 이 옵션이 있으면 구글 시트가 텍스트 '100'을 숫자 100으로 자동 변환합니다.
+            target_ws.update(cleaned_data, value_input_option='USER_ENTERED')
             
         return True
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error(f"'{backup_filename}' 파일을 찾을 수 없습니다. 이름을 다시 확인하세요.")
-        return False
     except Exception as e:
-        st.error(f"복구 중 에러: {e}")
+        st.error(f"복구 에러: {e}")
         return False
 
 def get_kst_time():
