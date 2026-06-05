@@ -26,20 +26,24 @@ def restore_database_from_backup(backup_filename):
         backup_sheet = drive_client.open(backup_filename)
         main_sheet = get_gspread_client()
         
-        for sheet_name in ["Results", "Quizzes"]:
+        for sheet_name in ["Results"]:
             backup_ws = backup_sheet.worksheet(sheet_name)
-            data = backup_ws.get_all_values()
+            # 1. 데이터를 가져옵니다.
+            data = backup_ws.get_all_records()
+            
+            # 2. [수정] 성적 기록에 필요한 컬럼을 강제 숫자화
+            for row in data:
+                if 'Score' in row: row['Score'] = int(row['Score']) if str(row['Score']).replace("'", "").isdigit() else 0
+                if 'Duration' in row: row['Duration'] = int(row['Duration']) if str(row['Duration']).replace("'", "").isdigit() else 0
+            
+            # 3. 판다스를 이용해 깔끔하게 다시 씁니다.
+            import pandas as pd
+            df = pd.DataFrame(data)
             
             target_ws = main_sheet.worksheet(sheet_name)
-            
-            # [수정] clear() 대신 행 삭제 사용
-            # 2번째 행부터 끝까지 삭제하여 헤더와 서식은 유지합니다.
-            if target_ws.row_count > 1:
-                target_ws.delete_rows(2, target_ws.row_count)
-            
-            # 헤더를 제외한 데이터만 입력
-            if len(data) > 1:
-                target_ws.append_rows(data[1:], value_input_option='USER_ENTERED')
+            # 헤더 삭제 없이 전체 덮어쓰기 (clear 사용 안 함)
+            target_ws.delete_rows(2, target_ws.row_count)
+            target_ws.update([df.columns.values.tolist()] + df.values.tolist(), value_input_option='USER_ENTERED')
             
         return True
     except Exception as e:
