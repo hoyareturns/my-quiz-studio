@@ -22,7 +22,6 @@ def get_gspread_client():
 # 3. 복구 함수 수정
 def restore_database_from_backup(backup_filename):
     drive_client = get_gspread_drive_client()
-    
     try:
         backup_sheet = drive_client.open(backup_filename)
         main_sheet = get_gspread_client()
@@ -31,20 +30,16 @@ def restore_database_from_backup(backup_filename):
             backup_ws = backup_sheet.worksheet(sheet_name)
             data = backup_ws.get_all_values()
             
-            # --- [자동 처리 로직] ---
-            # 모든 셀에서 작은따옴표만 제거하고 보냅니다.
-            cleaned_data = []
-            for row in data:
-                cleaned_row = [str(cell).replace("'", "").strip() for cell in row]
-                cleaned_data.append(cleaned_row)
-            # ----------------------
-            
             target_ws = main_sheet.worksheet(sheet_name)
-            target_ws.clear()
             
-            # [핵심] value_input_option='USER_ENTERED' 추가!
-            # 이 옵션이 있으면 구글 시트가 텍스트 '100'을 숫자 100으로 자동 변환합니다.
-            target_ws.update(cleaned_data, value_input_option='USER_ENTERED')
+            # [수정] clear() 대신 행 삭제 사용
+            # 2번째 행부터 끝까지 삭제하여 헤더와 서식은 유지합니다.
+            if target_ws.row_count > 1:
+                target_ws.delete_rows(2, target_ws.row_count)
+            
+            # 헤더를 제외한 데이터만 입력
+            if len(data) > 1:
+                target_ws.append_rows(data[1:], value_input_option='USER_ENTERED')
             
         return True
     except Exception as e:
