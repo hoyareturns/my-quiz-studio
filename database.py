@@ -8,7 +8,9 @@ import re
 # 1. 기존 드라이브 전체 관리용 (새로 추가)
 @st.cache_resource
 def get_gspread_drive_client():
+    """드라이브의 파일을 이름으로 검색/열기 위한 순수 드라이브 클라이언트"""
     creds = json.loads(st.secrets["GCP_JSON"], strict=False)
+    # gspread.service_account()는 드라이브 전체를 관리하는 객체를 반환합니다.
     return gspread.service_account_from_dict(creds)
 
 # 2. 기존 시트 데이터 작업용 (유지)
@@ -19,29 +21,19 @@ def get_gspread_client():
 
 # 3. 복구 함수 수정
 def restore_database_from_backup(backup_filename):
-    # 1. 드라이브 전체 제어권 가져오기
-    client = get_gspread_drive_client()
-    
-    # 2. 사용자님의 특정 폴더 ID (스크린샷에 있는 폴더의 고유 ID)
-    FOLDER_ID = "여기에_폴더_URL_끝부분_복사해서_넣으세요"
+    """경로(이름)로 파일을 찾고 복구합니다."""
+    # [핵심] get_gspread_client()를 쓰지 않고 drive_client를 사용!
+    drive_client = get_gspread_drive_client() 
     
     try:
-        # 3. 폴더 내 파일 목록 검색 (이름으로 찾기)
-        # client.open() 대신 드라이브 API를 직접 사용하여 해당 폴더 내의 파일만 조회
-        folder = client.list_spreadsheet_files(in_folder=FOLDER_ID)
+        # 1. 파일 이름으로 드라이브에서 파일 검색 및 열기
+        # .open()은 드라이브 객체에만 존재합니다.
+        backup_sheet = drive_client.open(backup_filename)
         
-        # 파일 목록에서 이름이 일치하는 파일 찾기
-        target_file = next((f for f in folder if f['name'] == backup_filename), None)
-        
-        if not target_file:
-            st.error(f"폴더 내에 '{backup_filename}' 파일을 찾을 수 없습니다.")
-            return False
-
-        # 4. 찾은 파일의 ID로 열기
-        backup_sheet = client.open_by_key(target_file['id'])
-        
-        # 5. 운영 시트 연결 및 데이터 복구 (기존 로직 동일)
+        # 2. 운영 시트 연결 (기존 시트 작업용 클라이언트)
         main_sheet = get_gspread_client()
+        
+        # 3. 데이터 복구
         for sheet_name in ["Results", "Quizzes"]:
             data = backup_sheet.worksheet(sheet_name).get_all_values()
             target_ws = main_sheet.worksheet(sheet_name)
@@ -49,8 +41,11 @@ def restore_database_from_backup(backup_filename):
             target_ws.update(data)
             
         return True
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error(f"'{backup_filename}' 파일을 찾을 수 없습니다. 이름을 다시 확인하세요.")
+        return False
     except Exception as e:
-        st.error(f"복구 에러: {e}")
+        st.error(f"복구 중 에러: {e}")
         return False
 
 def get_kst_time():
