@@ -21,10 +21,10 @@ def get_gspread_client():
     return gspread.service_account_from_dict(creds).open_by_key(st.secrets["SHEET_ID"])
 
 # 3. 복구 함수 수정
-def restore_database_by_copying(backup_filename):
+def restore_database_from_backup(backup_filename):
     drive_client = get_gspread_drive_client()
     try:
-        # 1. 원본(메인) 파일과 백업 파일을 찾습니다.
+        # 1. 원본(메인) 파일과 백업 파일을 엽니다.
         main_sheet = get_gspread_client()
         backup_sheet = drive_client.open(backup_filename)
         
@@ -32,17 +32,17 @@ def restore_database_by_copying(backup_filename):
         for backup_ws in backup_sheet.worksheets():
             ws_title = backup_ws.title
             
-            # 메인 파일에 해당 시트가 없으면 생성, 있으면 삭제 후 복사해야 함
+            # 운영 파일에 해당 시트가 있는지 확인
             try:
                 main_ws = main_sheet.worksheet(ws_title)
-                # 시트의 모든 데이터를 지우고 다시 복사 (가장 확실한 방법)
-                main_ws.clear()
             except:
-                # 시트가 없으면 새로 만듭니다
+                # 없으면 생성
                 main_ws = main_sheet.add_worksheet(title=ws_title, rows=1000, cols=20)
             
-            # [핵심] 시트 내용을 통째로 복사하는 로직
-            # 데이터뿐만 아니라 서식까지 한 번에 복사
+            # [핵심] 
+            # 1. 데이터를 초기화하고 
+            # 2. 서식까지 포함하여 통째로 업데이트
+            main_ws.clear()
             data = backup_ws.get_all_values(value_render_option='UNFORMATTED_VALUE')
             main_ws.update(data, value_input_option='RAW')
             
