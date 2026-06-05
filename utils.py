@@ -196,8 +196,10 @@ def generate_quiz_with_ai(q_topic):
             last_error = str(e)
             continue
             
-    raise Exception(f"모든 AI 모델 호출 실패. 마지막 에러: {last_error}")
-
+    # raise Exception(f"모든 AI 모델 호출 실패. 마지막 에러: {last_error}")
+    # 수정 코드:
+    st.error(f"AI 모델 호출 실패 상세 에러: {last_error}")
+    raise Exception("AI 서비스 연결에 실패했습니다. API 키나 할당량을 확인해주세요.")
 
 def trigger_google_sheet_backup():
     """
