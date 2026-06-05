@@ -5,22 +5,43 @@ from datetime import datetime, timedelta
 from collections import Counter
 import re
 
+# 1. 기존 드라이브 전체 관리용 (새로 추가)
+@st.cache_resource
+def get_gspread_drive_client():
+    creds = json.loads(st.secrets["GCP_JSON"], strict=False)
+    return gspread.service_account_from_dict(creds)
+
+# 2. 기존 시트 데이터 작업용 (유지)
+@st.cache_resource
+def get_gspread_client():
+    creds = json.loads(st.secrets["GCP_JSON"], strict=False)
+    return gspread.service_account_from_dict(creds).open_by_key(st.secrets["SHEET_ID"])
+
+# 3. 복구 함수 수정
 def restore_database_from_backup(backup_filename):
-    """
-    백업 파일(구글 시트)의 데이터를 읽어와 현재 운영 시트로 덮어씁니다.
-    """
-    # 1. 원본 시트 연결
-    client = get_gspread_client()
-    # 2. 백업 파일 열기 (사용자가 입력한 이름으로)
-    backup_sheet = client.open(backup_filename)
+    # [핵심] 여기서 drive_client를 사용해야 open()을 쓸 수 있습니다!
+    client = get_gspread_drive_client() 
     
-    # 3. 데이터 복사 (Results, Quizzes 등 필요한 시트별로 반복)
-    for sheet_name in ["Results", "Quizzes"]:
-        data = backup_sheet.worksheet(sheet_name).get_all_values()
-        target_ws = get_worksheet(sheet_name)
-        target_ws.clear() # 기존 데이터 삭제
-        target_ws.update(data) # 새 데이터 붙여넣기
-    return True
+    try:
+        # 백업 파일 열기
+        backup_sheet = client.open(backup_filename)
+        
+        # 운영 시트 열기 (기존 get_gspread_client 사용)
+        main_sheet = get_gspread_client()
+        
+        for sheet_name in ["Results", "Quizzes"]:
+            # 백업에서 데이터 가져오기
+            data = backup_sheet.worksheet(sheet_name).get_all_values()
+            
+            # 운영 시트에 덮어쓰기
+            target_ws = main_sheet.worksheet(sheet_name)
+            target_ws.clear() 
+            target_ws.update(data)
+            
+        return True
+    except Exception as e:
+        st.error(f"복구 에러: {e}")
+        return False
 
 def get_kst_time():
     return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
