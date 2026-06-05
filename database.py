@@ -24,25 +24,25 @@ def get_gspread_client():
 def restore_database_from_backup(backup_filename):
     drive_client = get_gspread_drive_client()
     try:
+        # 1. 파일 열기
         backup_sheet = drive_client.open(backup_filename)
         main_sheet = get_gspread_client()
         
-        # 'Results' 시트만 집중 공략
+        # 2. Results 시트 처리
         backup_ws = backup_sheet.worksheet("Results")
-        # 1. 헤더 포함 전체 데이터 로드
+        # [핵심] 원본 데이터 그대로 추출 (가공 없음)
         data = backup_ws.get_all_values()
-        df = pd.DataFrame(data[1:], columns=data[0])
         
-        # 2. [핵심] 숫자형 강제 변환 (성적 기록이 뜨게 하려면 필수)
-        df['Score'] = pd.to_numeric(df['Score'].astype(str).str.replace("'", ""), errors='coerce').fillna(0).astype(int)
-        df['Duration'] = pd.to_numeric(df['Duration'].astype(str).str.replace("'", ""), errors='coerce').fillna(0).astype(int)
-        
-        # 3. 데이터 업데이트
         target_ws = main_sheet.worksheet("Results")
-        target_ws.delete_rows(2, target_ws.row_count) # 2행부터 삭제
         
-        # 헤더 + 데이터 업데이트
-        target_ws.update([df.columns.values.tolist()] + df.values.tolist(), value_input_option='USER_ENTERED')
+        # 3. 서식 유지를 위해 clear 대신 행 삭제 사용
+        target_ws.delete_rows(2, target_ws.row_count)
+        
+        # 4. 데이터 원본 그대로 입력
+        # value_input_option='USER_ENTERED' 옵션이 구글 시트가 
+        # 데이터를 적절히 해석하게 만드는 가장 좋은 방법입니다.
+        if len(data) > 1:
+            target_ws.append_rows(data[1:], value_input_option='USER_ENTERED')
             
         return True
     except Exception as e:
