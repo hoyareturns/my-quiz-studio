@@ -19,24 +19,33 @@ def get_gspread_client():
 
 # 3. 복구 함수 수정
 def restore_database_from_backup(backup_filename):
-    # [핵심] 1. 드라이브 전체 제어권(drive_client)을 가져옵니다.
-    client = get_gspread_drive_client() 
+    # 1. 드라이브 전체 제어권 가져오기
+    client = get_gspread_drive_client()
+    
+    # 2. 사용자님의 특정 폴더 ID (스크린샷에 있는 폴더의 고유 ID)
+    FOLDER_ID = "여기에_폴더_URL_끝부분_복사해서_넣으세요"
     
     try:
-        # 2. 백업 파일 열기 (이제는 성공합니다!)
-        backup_sheet = client.open(backup_filename)
+        # 3. 폴더 내 파일 목록 검색 (이름으로 찾기)
+        # client.open() 대신 드라이브 API를 직접 사용하여 해당 폴더 내의 파일만 조회
+        folder = client.list_spreadsheet_files(in_folder=FOLDER_ID)
         
-        # 3. 운영 시트 열기 (기존 get_gspread_client 사용)
+        # 파일 목록에서 이름이 일치하는 파일 찾기
+        target_file = next((f for f in folder if f['name'] == backup_filename), None)
+        
+        if not target_file:
+            st.error(f"폴더 내에 '{backup_filename}' 파일을 찾을 수 없습니다.")
+            return False
+
+        # 4. 찾은 파일의 ID로 열기
+        backup_sheet = client.open_by_key(target_file['id'])
+        
+        # 5. 운영 시트 연결 및 데이터 복구 (기존 로직 동일)
         main_sheet = get_gspread_client()
-        
         for sheet_name in ["Results", "Quizzes"]:
-            # 백업 시트 데이터 가져오기
-            backup_ws = backup_sheet.worksheet(sheet_name)
-            data = backup_ws.get_all_values()
-            
-            # 운영 시트에 덮어쓰기
+            data = backup_sheet.worksheet(sheet_name).get_all_values()
             target_ws = main_sheet.worksheet(sheet_name)
-            target_ws.clear() 
+            target_ws.clear()
             target_ws.update(data)
             
         return True
