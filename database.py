@@ -24,25 +24,38 @@ def get_gspread_client():
 def restore_database_from_backup(backup_filename):
     drive_client = get_gspread_drive_client()
     try:
-        # 1. 파일 열기
         backup_sheet = drive_client.open(backup_filename)
         main_sheet = get_gspread_client()
-        
-        # 2. Results 시트 처리
         backup_ws = backup_sheet.worksheet("Results")
-        # [핵심] 원본 데이터 그대로 추출 (가공 없음)
+        
+        # 1. 원본 데이터 로드
         data = backup_ws.get_all_values()
+        header = data[0]
         
+        # 2. 데이터 가공
+        processed_rows = []
+        for row in data[1:]:
+            new_row = []
+            for i, cell_value in enumerate(row):
+                header_name = header[i]
+                
+                # Score와 Duration 열만 강제 숫자 변환
+                if header_name in ['Score', 'Duration']:
+                    # 작은따옴표 제거 후 숫자로 변환 (실패 시 0)
+                    clean_val = str(cell_value).replace("'", "").strip()
+                    new_row.append(int(clean_val) if clean_val.isdigit() else 0)
+                else:
+                    # 나머지(날짜 등)는 원본 그대로 (작은따옴표가 있으면 그대로 들어감)
+                    new_row.append(cell_value)
+                    
+            processed_rows.append(new_row)
+            
+        # 3. 운영 시트 업데이트
         target_ws = main_sheet.worksheet("Results")
-        
-        # 3. 서식 유지를 위해 clear 대신 행 삭제 사용
         target_ws.delete_rows(2, target_ws.row_count)
         
-        # 4. 데이터 원본 그대로 입력
-        # value_input_option='USER_ENTERED' 옵션이 구글 시트가 
-        # 데이터를 적절히 해석하게 만드는 가장 좋은 방법입니다.
-        if len(data) > 1:
-            target_ws.append_rows(data[1:], value_input_option='USER_ENTERED')
+        # 숫자 컬럼은 USER_ENTERED로 숫자 인식, 날짜는 그대로 입력
+        target_ws.append_rows(processed_rows, value_input_option='USER_ENTERED')
             
         return True
     except Exception as e:
