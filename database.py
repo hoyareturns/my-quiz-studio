@@ -19,19 +19,20 @@ def get_gspread_client():
 
 # 3. 복구 함수 수정
 def restore_database_from_backup(backup_filename):
-    # [핵심] 여기서 drive_client를 사용해야 open()을 쓸 수 있습니다!
+    # [핵심] 1. 드라이브 전체 제어권(drive_client)을 가져옵니다.
     client = get_gspread_drive_client() 
     
     try:
-        # 백업 파일 열기
+        # 2. 백업 파일 열기 (이제는 성공합니다!)
         backup_sheet = client.open(backup_filename)
         
-        # 운영 시트 열기 (기존 get_gspread_client 사용)
+        # 3. 운영 시트 열기 (기존 get_gspread_client 사용)
         main_sheet = get_gspread_client()
         
         for sheet_name in ["Results", "Quizzes"]:
-            # 백업에서 데이터 가져오기
-            data = backup_sheet.worksheet(sheet_name).get_all_values()
+            # 백업 시트 데이터 가져오기
+            backup_ws = backup_sheet.worksheet(sheet_name)
+            data = backup_ws.get_all_values()
             
             # 운영 시트에 덮어쓰기
             target_ws = main_sheet.worksheet(sheet_name)
