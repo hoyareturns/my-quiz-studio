@@ -3,6 +3,7 @@ import pandas as pd
 from database import (get_all_quizzes, save_setting, save_chat, get_worksheet, 
                       update_quiz, delete_quiz, reset_all_data)
 from prompts import VIEW_OPTIONS, FEEDBACK_MODES, EXTERNAL_PROMPT_TEMPLATE
+from database import restore_database_from_backup, get_backup_file_list
 
 def show_admin_sidebar(app_settings, get_kst_time):
     ADMIN_PASSWORD = "2662"
@@ -31,25 +32,30 @@ def show_admin_sidebar(app_settings, get_kst_time):
         st.subheader("데이터 복구")
         st.warning("입력한 파일명으로 기존 데이터를 즉시 덮어씁니다. 주의하세요!")
         
-        # 1. 파일 이름 입력
-        selected_file = st.text_input("복구할 파일명 입력 (정확히 입력하세요)")
-        
-        # 2. 버튼 클릭 시 즉시 복구 실행
-        if st.button("데이터 복구 실행", use_container_width=True, type="primary"):
-            if not selected_file:
-                st.error("파일명이 입력되지 않았습니다.")
+        # 1. 드라이브에서 백업 파일 목록 가져오기
+        backup_files = get_backup_file_list()
+
+        # 2. 드롭다운(selectbox) 생성
+        # 옵션 리스트 맨 앞에 빈 문자열("")을 넣고, index=0으로 설정하여 기본값을 공백으로 만듭니다.
+        selected_backup_file = st.selectbox(
+            "복구할 백업 파일을 선택하세요",
+            options=[""] + backup_files,
+            index=0
+        )
+
+        # 3. 복구 실행 버튼
+        if st.button("데이터 복구 실행"):
+            # 파일이 선택되지 않은(공백인) 상태에서 버튼을 누른 경우 방어
+            if selected_backup_file == "":
+                st.warning("복구할 백업 파일을 먼저 선택해 주세요.")
             else:
-                with st.spinner(f"'{selected_file}' 데이터를 불러오는 중입니다..."):
-                    # 데이터베이스의 복구 함수 호출
-                    from database import restore_database_from_backup
-                    try:
-                        if restore_database_from_backup(selected_file):
-                            st.success("복구 성공! 앱을 새로고침 하세요.")
-                            # 필요시 st.rerun() 추가
-                        else:
-                            st.error("복구 중 오류가 발생했습니다. 파일명을 다시 확인하세요.")
-                    except Exception as e:
-                        st.error(f"복구 실패: {e}")
+                with st.spinner(f"'{selected_backup_file}' 파일에서 데이터를 통째로 복사 중입니다..."):
+                    success = restore_database_from_backup(selected_backup_file)
+                    
+                    if success:
+                        st.success(f"'{selected_backup_file}' 파일로 완벽하게 복구되었습니다!")
+                    else:
+                        st.error("데이터 복구 중 문제가 발생했습니다.")
 
         # --------------------------------------
         # --- [추가] 순위표 노출 인원 설정 구역 ---

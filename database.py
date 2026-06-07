@@ -14,12 +14,26 @@ def get_gspread_drive_client():
     # gspread.service_account()는 드라이브 전체를 관리하는 객체를 반환합니다.
     return gspread.service_account_from_dict(creds)
 
-# 2. 기존 시트 데이터 작업용 (유지)
-@st.cache_resource
-def get_gspread_client():
-    creds = json.loads(st.secrets["GCP_JSON"], strict=False)
-    return gspread.service_account_from_dict(creds).open_by_key(st.secrets["SHEET_ID"])
 
+def get_backup_file_list():
+    drive_client = get_gspread_drive_client()
+    try:
+        # 구글 계정(서비스 계정)이 접근할 수 있는 모든 스프레드시트 목록을 가져옵니다.
+        all_files = drive_client.list_spreadsheet_files()
+        
+        # 파일 데이터에서 이름('name')만 추출하여 리스트로 만듭니다.
+        # 팁: 백업 파일 이름에 'Backup'이나 '백업' 같은 단어가 공통으로 들어간다면
+        # [f['name'] for f in all_files if '백업' in f['name']] 처럼 필터링할 수도 있습니다.
+        file_names = [f['name'] for f in all_files]
+        
+        # 리스트를 내림차순 정렬 (파일 이름에 날짜가 있다면 최신 파일이 위로 올라오게 됨)
+        file_names.sort(reverse=True)
+        
+        return file_names
+    except Exception as e:
+        st.error(f"백업 파일 목록을 불러오는 중 오류 발생: {e}")
+        return []
+    
 # 3. 복구 함수 수정
 def restore_database_from_backup(backup_filename):
     drive_client = get_gspread_drive_client()
