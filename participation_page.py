@@ -82,7 +82,7 @@ def show_participation_status(season_res, all_quizzes):
     is_admin = st.session_state.get("is_admin", False) # 관리자 인증 상태 확인
     if is_admin:
         # [관리자 모드] 점수 그대로 표시 (NaN은 "-"로)        
-        pivot_df = pivot_df.applymap(lambda x: str(int(x)) if pd.notnull(x) else "-")
+        pivot_df = pivot_df.map(lambda x: str(int(x)) if pd.notnull(x) else "-")
     else:
         pivot_df = pivot_df.fillna("-")
         for col in pivot_df.columns:
