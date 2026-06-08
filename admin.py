@@ -12,6 +12,7 @@ def show_admin_sidebar(app_settings, get_kst_time):
     pw = st.text_input("비밀번호", type="password", label_visibility="collapsed")
     
     if pw == ADMIN_PASSWORD:
+        st.session_state.is_admin = True # 관리자 상태 기록  
         st.success("인증 완료")     
         st.divider()
         # --- 구글 시트 백업 및 복구 영역 ---
