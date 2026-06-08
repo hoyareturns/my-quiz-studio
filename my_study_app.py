@@ -100,7 +100,22 @@ def main():
     # 데이터 로드
     all_quizzes = get_all_quizzes()
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
-    season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
+
+    all_data = get_all_results()
+    season_res = []
+
+    # season_start가 없는 경우 대비
+    if not season_start:
+        season_start = '2000-01-01 00:00:00'
+
+    for r in all_data:
+        # Time 값을 가져오되, 없으면 빈 문자열
+        time_val = str(r.get('Time', ''))
+        
+        # 'Time' 데이터가 있고, season_start와 비교 가능한 형식인지 체크
+        # 만약 time_val이 빈 문자열이면 비교 대상에서 제외
+        if time_val and time_val >= str(season_start):
+            season_res.append(r)
 
     # 세션 상태 초기화
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump', 'results_saved']:
@@ -109,7 +124,8 @@ def main():
 
     # 선택된 메뉴(라디오 버튼 상태)에 따른 화면 출력
     if view_mode == TAB_RANK:
-        show_season_leaderboard(season_res, season_start, app_settings)
+        safe_season_start = str(season_start) if season_start else '2000-01-01 00:00:00'
+        show_season_leaderboard(season_res, safe_season_start, app_settings)
     elif view_mode == TAB_REVIEW:
         show_wrong_answer_conquest(st.session_state.player_name, all_quizzes, robust_parse)
     elif view_mode == TAB_CHAT:

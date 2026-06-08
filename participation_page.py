@@ -51,7 +51,18 @@ def show_participation_status(season_res, all_quizzes):
 
     # 4. 기록 데이터 전처리
     df = pd.DataFrame(season_res)
-    
+    # [방어 로직] 컬럼명이 비어있거나 이상하면 강제로 지정
+    expected_cols = ['QuizTitle', 'User', 'Score', 'Duration', 'Time']
+    if len(df.columns) < len(expected_cols):
+        # 만약 데이터가 한 줄로 뭉쳐 읽혔다면, 콤마로 분리하여 강제 지정
+        df = df.iloc[:, 0].str.split(',', expand=True)
+        df.columns = expected_cols
+
+    # [핵심] 이제 여기에서 서식에 상관없이 0 처리 및 정제 수행
+    df['Score'] = pd.to_numeric(df['Score'], errors='coerce').fillna(0) # 에러는 0으로 처리
+    df['User'] = df['User'].astype(str).str.strip()
+    df['QuizTitle'] = df['QuizTitle'].astype(str).str.strip()
+
     if not df.empty:
         # [원천 차단] 데이터에서도 'test' 포함 아이디 삭제
         df = df[~df['User'].str.lower().str.contains('test', na=False)]
@@ -59,6 +70,12 @@ def show_participation_status(season_res, all_quizzes):
         # [옵션 차단] 데이터에서도 'guest' 포함 아이디 삭제
         if exclude_guest:
             df = df[~df['User'].str.lower().str.contains('guest', na=False)]
+
+
+    st.write("--- 데이터 확인 ---")
+    st.write(df.head()) # 데이터가 어떻게 생겼는지 출력
+    st.write("Score 데이터 타입:", df['Score'].dtype) # 숫자인지 확인    
+    df['Score'] = pd.to_numeric(df['Score'], errors='coerce')
 
     # 5. 피벗 테이블 생성 및 명단 재구성
     if not df.empty:
@@ -79,11 +96,24 @@ def show_participation_status(season_res, all_quizzes):
         pivot_df = pd.DataFrame("-", index=all_players, columns=target_quiz_titles)
 
     # 6. 최종 텍스트 변환 및 정리
-    is_admin = st.session_state.get("is_admin", False) # 관리자 인증 상태 확인
+    is_admin = st.session_state.get("is_admin", False)
+    
     if is_admin:
-        # [관리자 모드] 점수 그대로 표시 (NaN은 "-"로)        
-        pivot_df = pivot_df.applymap(lambda x: str(int(x)) if pd.notnull(x) else "-")
+        # [관리자 모드]
+        # map 함수 내에서 숫자인지 확실히 체크하여 변환합니다.
+        def format_score(x):
+            try:
+                # 데이터가 NaN이면 "-"
+                if pd.isnull(x): return "-"
+                # 숫자면 정수형으로 변환
+                return str(int(float(x)))
+            except:
+                # 숫자 변환이 안 되는 찌꺼기 데이터면 그냥 원래 값을 문자열로 반환
+                return str(x)
+        
+        pivot_df = pivot_df.map(format_score)
     else:
+        # [사용자 모드] 기존 방식대로 "완료" 표시
         pivot_df = pivot_df.fillna("-")
         for col in pivot_df.columns:
             pivot_df[col] = pivot_df[col].apply(lambda x: "완료" if x != "-" else "-")
