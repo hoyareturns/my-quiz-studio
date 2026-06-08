@@ -42,7 +42,7 @@ def show_admin_sidebar(app_settings, get_kst_time):
                             st.success(f"'{custom_backup_name}' 백업이 완료되었습니다!")
                         else:
                             st.error(f"백업 실패: {msg}")          
-                                
+
             # [복구 기능]
             from database import restore_database_from_backup, get_backup_file_list
             
@@ -66,8 +66,8 @@ def show_admin_sidebar(app_settings, get_kst_time):
                             st.error("데이터 복구 중 문제가 발생했습니다.")
 
 
-
-            st.warning("이 작업은 '퀴즈 목록', '학습 결과', '오답 기록'을 모두 영구 삭제합니다. (복구 불가)")            
+            st.divider() 
+            st.warning("이 작업은 모든 기록을 영구 삭제합니다. (복구 불가)")            
             # 새시즌
             confirm_pw = st.text_input("초기화 확인을 위해 비밀번호를 다시 입력하세요", type="password", key="reset_confirm_pw")
             
