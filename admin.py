@@ -15,7 +15,7 @@ def show_admin_sidebar(app_settings, get_kst_time):
         st.session_state.is_admin = True # 관리자 상태 기록  
         st.success("인증 완료")     
         
-        st.divider()
+        # st.divider()
         with st.expander("데이터 보관 / 복구 / 새시즌"):           
             # [백업 기능]
             from utils import trigger_google_sheet_backup, generate_default_backup_name
@@ -81,7 +81,7 @@ def show_admin_sidebar(app_settings, get_kst_time):
                     st.error("비밀번호가 일치하지 않습니다.")
 
 
-        st.divider()
+        # st.divider()
         with st.expander("앱 기본 설정"):         
             # --------------------------------------
             # --- [추가] 순위표 노출 인원 설정 구역 ---
@@ -141,7 +141,7 @@ def show_admin_sidebar(app_settings, get_kst_time):
                 save_setting("feedback_mode", feedback_mode)
                 st.rerun()
 
-        st.divider()
+        # st.divider()
         
         with st.expander("AI 출제 프롬프트 확인 (복사용)"):
             st.caption("노트북LM 등 외부 AI에서 정밀 출제 시 아래 내용을 복사해서 사용하세요.")
@@ -174,7 +174,7 @@ def show_admin_sidebar(app_settings, get_kst_time):
                         st.rerun()
 
         # --- 수정된 섹션: 최근 접속 및 학습 현황 (사용자 정의 순서) ---
-        st.divider()
+        # st.divider()
         with st.expander(" 최근 접속 및 학습 현황", expanded=True):
             ws_res = get_worksheet("Results")
             if ws_res:
