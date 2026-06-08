@@ -67,7 +67,7 @@ def show_admin_sidebar(app_settings, get_kst_time):
 
 
             st.divider() 
-            st.warning("이 작업은 모든 기록을 영구 삭제합니다. (복구 불가)")            
+            st.warning("이 작업은 모든 기록을 영구 삭제합니다.")            
             # 새시즌
             confirm_pw = st.text_input("초기화 확인을 위해 비밀번호를 다시 입력하세요", type="password", key="reset_confirm_pw")
             
