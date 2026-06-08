@@ -100,15 +100,21 @@ def main():
     # 데이터 로드
     all_quizzes = get_all_quizzes()
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
-    
+
     all_data = get_all_results()
     season_res = []
 
+    # season_start가 없는 경우 대비
+    if not season_start:
+        season_start = '2000-01-01 00:00:00'
+
     for r in all_data:
-        # 1. 'Time' 키가 있는지 확인하고, 없으면 빈 문자열로 처리
-        # 2. 값이 season_start보다 큰지 비교
-        time_val = r.get('Time', '')
-        if time_val and time_val >= season_start:
+        # Time 값을 가져오되, 없으면 빈 문자열
+        time_val = str(r.get('Time', ''))
+        
+        # 'Time' 데이터가 있고, season_start와 비교 가능한 형식인지 체크
+        # 만약 time_val이 빈 문자열이면 비교 대상에서 제외
+        if time_val and time_val >= str(season_start):
             season_res.append(r)
 
     # 세션 상태 초기화
