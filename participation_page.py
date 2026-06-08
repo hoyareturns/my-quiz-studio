@@ -79,11 +79,24 @@ def show_participation_status(season_res, all_quizzes):
         pivot_df = pd.DataFrame("-", index=all_players, columns=target_quiz_titles)
 
     # 6. 최종 텍스트 변환 및 정리
-    is_admin = st.session_state.get("is_admin", False) # 관리자 인증 상태 확인
+    is_admin = st.session_state.get("is_admin", False)
+    
     if is_admin:
-        # [관리자 모드] 점수 그대로 표시 (NaN은 "-"로)        
-        pivot_df = pivot_df.map(lambda x: str(int(x)) if pd.notnull(x) else "-")
+        # [관리자 모드]
+        # map 함수 내에서 숫자인지 확실히 체크하여 변환합니다.
+        def format_score(x):
+            try:
+                # 데이터가 NaN이면 "-"
+                if pd.isnull(x): return "-"
+                # 숫자면 정수형으로 변환
+                return str(int(float(x)))
+            except:
+                # 숫자 변환이 안 되는 찌꺼기 데이터면 그냥 원래 값을 문자열로 반환
+                return str(x)
+        
+        pivot_df = pivot_df.map(format_score)
     else:
+        # [사용자 모드] 기존 방식대로 "완료" 표시
         pivot_df = pivot_df.fillna("-")
         for col in pivot_df.columns:
             pivot_df[col] = pivot_df[col].apply(lambda x: "완료" if x != "-" else "-")
