@@ -100,7 +100,16 @@ def main():
     # 데이터 로드
     all_quizzes = get_all_quizzes()
     season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
-    season_res = [r for r in get_all_results() if r.get('Time', '') >= season_start]
+    
+    all_data = get_all_results()
+    season_res = []
+
+    for r in all_data:
+        # 1. 'Time' 키가 있는지 확인하고, 없으면 빈 문자열로 처리
+        # 2. 값이 season_start보다 큰지 비교
+        time_val = r.get('Time', '')
+        if time_val and time_val >= season_start:
+            season_res.append(r)
 
     # 세션 상태 초기화
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump', 'results_saved']:
