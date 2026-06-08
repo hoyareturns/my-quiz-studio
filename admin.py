@@ -131,11 +131,6 @@ def show_admin_sidebar(app_settings, get_kst_time):
                 save_setting("default_category", default_cat)
                 st.rerun()
 
-            cust_cat = st.text_input("카테고리 목록 (쉼표 구분)", app_settings.get("custom_categories", ""))
-            if st.button("카테고리 저장", use_container_width=True):
-                save_setting("custom_categories", cust_cat)
-                st.rerun()
-
             feedback_mode = st.selectbox("피드백 모드", FEEDBACK_MODES, index=FEEDBACK_MODES.index(app_settings.get('feedback_mode', FEEDBACK_MODES[0])) if app_settings.get('feedback_mode') in FEEDBACK_MODES else 0)
             if feedback_mode != app_settings.get('feedback_mode'):
                 save_setting("feedback_mode", feedback_mode)
@@ -149,6 +144,12 @@ def show_admin_sidebar(app_settings, get_kst_time):
             st.text_area("프롬프트 양식", EXTERNAL_PROMPT_TEMPLATE, height=300)
 
         with st.expander("새 퀴즈 배포"):
+
+            cust_cat = st.text_input("신규 카테고리 목록 (쉼표 구분)", app_settings.get("custom_categories", ""))
+            if st.button("신규 카테고리 저장", use_container_width=True):
+                save_setting("custom_categories", cust_cat)
+                st.rerun()
+
             nc = st.selectbox("그룹 선택", all_cats)
             nt = st.text_input("제목")
             nx = st.text_area("AI 텍스트 붙여넣기", height=150)
