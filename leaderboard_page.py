@@ -11,8 +11,7 @@ def show_season_leaderboard(season_res, season_start, app_settings): # app_setti
     
     # 2. 타이틀에 설정된 숫자 반영
     st.subheader(f"영역별 성취도 TOP {top_count}")
-    st.caption(f"이번 시즌 시작일: {season_start[:10]}")
-    
+    st.caption(f"이번 시즌 시작일: {str(season_start)[:10]}")
     if not season_res:
         st.info("이번 시즌 기록이 없습니다.")
         return

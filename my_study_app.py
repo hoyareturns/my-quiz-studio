@@ -124,7 +124,8 @@ def main():
 
     # 선택된 메뉴(라디오 버튼 상태)에 따른 화면 출력
     if view_mode == TAB_RANK:
-        show_season_leaderboard(season_res, season_start, app_settings)
+        safe_season_start = str(season_start) if season_start else '2000-01-01 00:00:00'
+        show_season_leaderboard(season_res, safe_season_start, app_settings)
     elif view_mode == TAB_REVIEW:
         show_wrong_answer_conquest(st.session_state.player_name, all_quizzes, robust_parse)
     elif view_mode == TAB_CHAT:
