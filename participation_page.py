@@ -50,16 +50,29 @@ def show_participation_status(season_res, all_quizzes):
         target_quiz_titles = sorted(list(set(q.get('Title') for q in all_quizzes if q.get('Category') == selected_cat)))
 
     # 4. 기록 데이터 전처리
+    if not season_res:
+        st.info("표시할 참여 기록이 없습니다.")
+        return
+
+    # [수정] 데이터프레임 강제 생성 및 컬럼명 재정의
     df = pd.DataFrame(season_res)
-    # [방어 로직] 컬럼명이 비어있거나 이상하면 강제로 지정
+    
+    # 만약 df가 컬럼명을 제대로 못 읽어왔다면(KeyError의 원인)
     expected_cols = ['QuizTitle', 'User', 'Score', 'Duration', 'Time']
-    if len(df.columns) < len(expected_cols):
-        # 만약 데이터가 한 줄로 뭉쳐 읽혔다면, 콤마로 분리하여 강제 지정
+    
+    # 데이터프레임의 열 개수가 5개가 아니면 뭉쳐있다고 판단
+    if df.shape[1] != 5:
+        # 0번 열을 쉼표로 분리하여 5개 열로 강제 생성
         df = df.iloc[:, 0].str.split(',', expand=True)
+        # 헤더를 강제로 입힘
+        df.columns = expected_cols[:df.shape[1]]
+    else:
+        # 정상적으로 읽혔다면 컬럼명을 확실하게 보정
         df.columns = expected_cols
 
     # [핵심] 이제 여기에서 서식에 상관없이 0 처리 및 정제 수행
-    df['Score'] = pd.to_numeric(df['Score'], errors='coerce').fillna(0) # 에러는 0으로 처리
+    # Score 컬럼이 숫자인지 확인하고, 아니면 0으로
+    df['Score'] = pd.to_numeric(df['Score'], errors='coerce').fillna(0)
     df['User'] = df['User'].astype(str).str.strip()
     df['QuizTitle'] = df['QuizTitle'].astype(str).str.strip()
 
@@ -78,22 +91,30 @@ def show_participation_status(season_res, all_quizzes):
     df['Score'] = pd.to_numeric(df['Score'], errors='coerce')
 
     # 5. 피벗 테이블 생성 및 명단 재구성
+    # 명단에 있는 유저만 필터링하여 데이터프레임 구성
     if not df.empty:
-        df['Score'] = pd.to_numeric(df['Score'], errors='coerce')
+        # 데이터프레임의 User 리스트와 all_players를 확실하게 대조
+        df = df[df['User'].isin(all_players)]
+        
+        # 피벗 테이블 생성: fill_value=0으로 설정하여 NaN을 0으로 처리
         pivot_df = df.pivot_table(index='User', columns='QuizTitle', values='Score', aggfunc='max')
         
-        # 필터링된 깨끗한 명단(all_players)으로 행 재구성
+        # [핵심] all_players 전체 명단을 인덱스로 강제 설정 (참여하지 않은 유저도 행으로 남김)
         pivot_df = pivot_df.reindex(index=all_players)
         
+        # target_quiz_titles에 있는 컬럼만 남기거나 새로 생성
+        for t in target_quiz_titles:
+            if t not in pivot_df.columns:
+                pivot_df[t] = None
+        pivot_df = pivot_df[target_quiz_titles]
+        
+        # [옵션] 모두 미참여 제외 처리
         if hide_empty:
-            actual_cols = [t for t in target_quiz_titles if t in pivot_df.columns and pivot_df[t].notnull().any()]
+            actual_cols = [t for t in target_quiz_titles if pivot_df[t].notnull().any()]
             pivot_df = pivot_df[actual_cols]
-        else:
-            for t in target_quiz_titles:
-                if t not in pivot_df.columns: pivot_df[t] = None
-            pivot_df = pivot_df[target_quiz_titles]
     else:
-        pivot_df = pd.DataFrame("-", index=all_players, columns=target_quiz_titles)
+        # 데이터가 아예 없을 경우 빈 데이터프레임 생성
+        pivot_df = pd.DataFrame(index=all_players, columns=target_quiz_titles)
 
     # 6. 최종 텍스트 변환 및 정리
     is_admin = st.session_state.get("is_admin", False)
