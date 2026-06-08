@@ -107,15 +107,8 @@ def main():
     # season_start가 없는 경우 대비
     if not season_start:
         season_start = '2000-01-01 00:00:00'
-
-    for r in all_data:
-        # Time 값을 가져오되, 없으면 빈 문자열
-        time_val = str(r.get('Time', ''))
         
-        # 'Time' 데이터가 있고, season_start와 비교 가능한 형식인지 체크
-        # 만약 time_val이 빈 문자열이면 비교 대상에서 제외
-        if time_val and time_val >= str(season_start):
-            season_res.append(r)
+    season_res = all_data
 
     # 세션 상태 초기화
     for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump', 'results_saved']:
