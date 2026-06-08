@@ -208,25 +208,22 @@ def generate_default_backup_name():
     now = datetime.now(tz)
     return f"퀴즈_백업_{now.strftime('%Y%m%d_%H%M')}"
 
+
 def trigger_google_sheet_backup(custom_name):
-    """
-    GAS 웹 앱을 사용하지 않고, 파이썬(gspread)에서 직접 시트를 복사하고 이름을 지정합니다.
-    """
-    # database.py에서 드라이브 클라이언트를 불러옵니다.
-    from database import get_gspread_drive_client 
+    # 기존에 잘 되던 바로 그 URL을 가져옵니다.
+    backup_url = st.secrets.get("GS_BACKUP_URL") 
     
+    if not backup_url:
+        return False, "백업 URL이 설정되지 않았습니다."
+
     try:
-        drive_client = get_gspread_drive_client()
-        main_sheet_id = st.secrets["SHEET_ID"]
+        # [핵심] Admin에서 입력받은 이름(custom_name)을 URL 뒤에 붙입니다.
+        # 예: ~exec?name=퀴즈_백업_20260608_1540
+        response = requests.get(f"{backup_url}?name={custom_name}")
         
-        # 1. 현재 운영 중인 시트를 지정한 이름(custom_name)으로 복사합니다.
-        # 서비스 계정이 만들었기 때문에 자동으로 '복구 드롭다운 목록'에 뜨게 됩니다.
-        new_sheet = drive_client.copy(main_sheet_id, title=custom_name)
-        
-        # 2. (선택 사항) 사용자님의 개인 구글 계정에서도 이 백업 파일을 보려면 아래 주석을 풀고 이메일을 적어주세요.
-        # new_sheet.share('사용자님의구글계정@gmail.com', perm_type='user', role='writer')
-        
-        return True, "성공"
-        
+        if response.status_code == 200 and "Success" in response.text:
+            return True, "백업 성공"
+        else:
+            return False, f"백업 실패: {response.text}"
     except Exception as e:
-        return False, str(e)
+        return False, f"연결 오류: {str(e)}"
