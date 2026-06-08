@@ -14,90 +14,53 @@ def show_admin_sidebar(app_settings, get_kst_time):
     if pw == ADMIN_PASSWORD:
         st.session_state.is_admin = True # 관리자 상태 기록  
         st.success("인증 완료")     
-        st.divider()
-        # --- 구글 시트 백업 및 복구 영역 ---
-        st.subheader("데이터 보관 및 복구")
-        
-        # [백업 기능]
-        from utils import trigger_google_sheet_backup, generate_default_backup_name
-        
-        # 1. 자동 이름 생성 및 수정 가능한 입력창 제공
-        default_name = generate_default_backup_name()
-        custom_backup_name = st.text_input("백업 파일 이름 (원하시면 뒤에 꼬리표를 추가하세요)", value=default_name)
-        
-        if st.button("지금 즉시 구글 시트 백업 실행", use_container_width=True):
-            if not custom_backup_name.strip():
-                st.warning("백업 파일 이름을 입력해주세요!")
-            else:
-                with st.spinner(f"'{custom_backup_name}' 이름으로 백업을 진행 중입니다..."):
-                    # 2. 수정한 파일 이름을 함수 인자로 확실하게 넘겨줍니다!
-                    success, msg = trigger_google_sheet_backup(custom_backup_name)
-                    if success:
-                        st.success(f"'{custom_backup_name}' 백업이 완료되었습니다!")
-                    else:
-                        st.error(f"백업 실패: {msg}")
         
         st.divider()
-        
-        # [복구 기능]
-        from database import restore_database_from_backup, get_backup_file_list
-        
-        backup_files = get_backup_file_list()
-        selected_backup_file = st.selectbox(
-            "복구할 백업 파일을 선택하세요",
-            options=[""] + backup_files,
-            index=0
-        )
-        
-        if st.button("데이터 복구 실행", use_container_width=True):
-            if selected_backup_file == "":
-                st.warning("복구할 백업 파일을 먼저 선택해 주세요.")
-            else:
-                with st.spinner(f"'{selected_backup_file}' 파일에서 데이터를 통째로 복사 중입니다..."):
-                    success = restore_database_from_backup(selected_backup_file)
-                    
-                    if success:
-                        st.success(f"'{selected_backup_file}' 파일로 완벽하게 복구되었습니다!")
-                    else:
-                        st.error("데이터 복구 중 문제가 발생했습니다.")
-
-        # --------------------------------------
-        # --- [추가] 순위표 노출 인원 설정 구역 ---
-        st.write("---")
-        st.subheader(" 순위표 노출 설정")
-        st.info("순위표 페이지의 '영역별 성취도' 섹션에 표시될 인원수를 설정합니다.")
-        
-        # 1. 현재 설정된 값 불러오기 (기본값 3)
-        # app_settings는 show_admin_sidebar의 인자로 전달받은 값을 활용합니다.
-        current_top_count = int(app_settings.get('top_achievers_count', 3))
-        
-        # 2. 숫자 입력 위젯
-        new_top_count = st.number_input(
-            "우수 성취자 노출 인원 (TOP N)", 
-            min_value=1, 
-            max_value=1000, 
-            value=current_top_count,
-            step=1,
-            help="모든 유저를 보고 싶다면 인원수를 넉넉하게 설정하세요."
-        )
-        
-        # 3. 설정 저장 버튼
-        if st.button("순위 노출 인원 설정 저장", use_container_width=True):
-            # database.py에서 임포트한 save_setting 함수를 사용합니다.
-            success, msg = save_setting("top_achievers_count", str(new_top_count))
-            if success:
-                st.success(f"설정 완료! 이제 순위표에 TOP {new_top_count}명이 표시됩니다.")
-                # 즉시 반영을 위해 앱 재실행
-                st.rerun()
-            else:
-                st.error(f"설정 저장 실패: {msg}")
-
-
-
-        with st.expander(" 새 시즌 시작 (데이터 전체 초기화)", expanded=False):
-            st.warning("이 작업은 '퀴즈 목록', '학습 결과', '오답 기록'을 모두 영구 삭제합니다. (복구 불가)")
+        with st.expander("데이터 보관 / 복구 / 새시즌"):           
+            # [백업 기능]
+            from utils import trigger_google_sheet_backup, generate_default_backup_name
             
-            # 삭제 전용 비밀번호 재확인
+            # 1. 자동 이름 생성 및 수정 가능한 입력창 제공
+            default_name = generate_default_backup_name()
+            custom_backup_name = st.text_input("백업 파일 이름 (원하시면 뒤에 꼬리표를 추가하세요)", value=default_name)
+            
+            if st.button("지금 즉시 구글 시트 백업 실행", use_container_width=True):
+                if not custom_backup_name.strip():
+                    st.warning("백업 파일 이름을 입력해주세요!")
+                else:
+                    with st.spinner(f"'{custom_backup_name}' 이름으로 백업을 진행 중입니다..."):
+                        # 2. 수정한 파일 이름을 함수 인자로 확실하게 넘겨줍니다!
+                        success, msg = trigger_google_sheet_backup(custom_backup_name)
+                        if success:
+                            st.success(f"'{custom_backup_name}' 백업이 완료되었습니다!")
+                        else:
+                            st.error(f"백업 실패: {msg}")                
+            # [복구 기능]
+            from database import restore_database_from_backup, get_backup_file_list
+            
+            backup_files = get_backup_file_list()
+            selected_backup_file = st.selectbox(
+                "복구할 백업 파일을 선택하세요",
+                options=[""] + backup_files,
+                index=0
+            )
+            
+            if st.button("데이터 복구 실행", use_container_width=True):
+                if selected_backup_file == "":
+                    st.warning("복구할 백업 파일을 먼저 선택해 주세요.")
+                else:
+                    with st.spinner(f"'{selected_backup_file}' 파일에서 데이터를 통째로 복사 중입니다..."):
+                        success = restore_database_from_backup(selected_backup_file)
+                        
+                        if success:
+                            st.success(f"'{selected_backup_file}' 파일로 완벽하게 복구되었습니다!")
+                        else:
+                            st.error("데이터 복구 중 문제가 발생했습니다.")
+
+
+
+            st.warning("이 작업은 '퀴즈 목록', '학습 결과', '오답 기록'을 모두 영구 삭제합니다. (복구 불가)")            
+            # 새시즌
             confirm_pw = st.text_input("초기화 확인을 위해 비밀번호를 다시 입력하세요", type="password", key="reset_confirm_pw")
             
             if st.button(" 모든 데이터 삭제 및 시즌 초기화 실행", use_container_width=True, type="primary"):
@@ -116,32 +79,67 @@ def show_admin_sidebar(app_settings, get_kst_time):
                             st.error(msg)
                 else:
                     st.error("비밀번호가 일치하지 않습니다.")
-        
+
+
         st.divider()
-        all_q = get_all_quizzes()
-        custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
-        all_cats = list(dict.fromkeys(custom_cats + [q.get('Category', '미분류') for q in all_q]))
-        
-        st.caption("앱 기본 설정")
-        default_view = st.selectbox("처음 열릴 탭", VIEW_OPTIONS, index=VIEW_OPTIONS.index(app_settings.get('default_view', VIEW_OPTIONS[0])) if app_settings.get('default_view') in VIEW_OPTIONS else 0)
-        if default_view != app_settings.get('default_view'):
-            save_setting("default_view", default_view)
-            st.rerun()
+        with st.expander("앱 기본 설정"):         
+            # --------------------------------------
+            # --- [추가] 순위표 노출 인원 설정 구역 ---
+            st.write("---")
+            st.subheader(" 순위표 노출 설정")
+            st.info("순위표 페이지의 '영역별 성취도' 섹션에 표시될 인원수를 설정합니다.")
             
-        default_cat = st.selectbox("처음 열릴 카테고리", all_cats, index=all_cats.index(app_settings.get('default_category', all_cats[0])) if app_settings.get('default_category') in all_cats else 0)
-        if default_cat != app_settings.get('default_category'):
-            save_setting("default_category", default_cat)
-            st.rerun()
+            # 1. 현재 설정된 값 불러오기 (기본값 3)
+            # app_settings는 show_admin_sidebar의 인자로 전달받은 값을 활용합니다.
+            current_top_count = int(app_settings.get('top_achievers_count', 3))
+            
+            # 2. 숫자 입력 위젯
+            new_top_count = st.number_input(
+                "우수 성취자 노출 인원 (TOP N)", 
+                min_value=1, 
+                max_value=1000, 
+                value=current_top_count,
+                step=1,
+                help="모든 유저를 보고 싶다면 인원수를 넉넉하게 설정하세요."
+            )
+            
+            # 3. 설정 저장 버튼
+            if st.button("순위 노출 인원 설정 저장", use_container_width=True):
+                # database.py에서 임포트한 save_setting 함수를 사용합니다.
+                success, msg = save_setting("top_achievers_count", str(new_top_count))
+                if success:
+                    st.success(f"설정 완료! 이제 순위표에 TOP {new_top_count}명이 표시됩니다.")
+                    # 즉시 반영을 위해 앱 재실행
+                    st.rerun()
+                else:
+                    st.error(f"설정 저장 실패: {msg}")
 
-        cust_cat = st.text_input("카테고리 목록 (쉼표 구분)", app_settings.get("custom_categories", ""))
-        if st.button("카테고리 저장", use_container_width=True):
-            save_setting("custom_categories", cust_cat)
-            st.rerun()
+        
 
-        feedback_mode = st.selectbox("피드백 모드", FEEDBACK_MODES, index=FEEDBACK_MODES.index(app_settings.get('feedback_mode', FEEDBACK_MODES[0])) if app_settings.get('feedback_mode') in FEEDBACK_MODES else 0)
-        if feedback_mode != app_settings.get('feedback_mode'):
-            save_setting("feedback_mode", feedback_mode)
-            st.rerun()
+            all_q = get_all_quizzes()
+            custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
+            all_cats = list(dict.fromkeys(custom_cats + [q.get('Category', '미분류') for q in all_q]))
+            
+            st.caption("앱 기본 설정")
+            default_view = st.selectbox("처음 열릴 탭", VIEW_OPTIONS, index=VIEW_OPTIONS.index(app_settings.get('default_view', VIEW_OPTIONS[0])) if app_settings.get('default_view') in VIEW_OPTIONS else 0)
+            if default_view != app_settings.get('default_view'):
+                save_setting("default_view", default_view)
+                st.rerun()
+                
+            default_cat = st.selectbox("처음 열릴 카테고리", all_cats, index=all_cats.index(app_settings.get('default_category', all_cats[0])) if app_settings.get('default_category') in all_cats else 0)
+            if default_cat != app_settings.get('default_category'):
+                save_setting("default_category", default_cat)
+                st.rerun()
+
+            cust_cat = st.text_input("카테고리 목록 (쉼표 구분)", app_settings.get("custom_categories", ""))
+            if st.button("카테고리 저장", use_container_width=True):
+                save_setting("custom_categories", cust_cat)
+                st.rerun()
+
+            feedback_mode = st.selectbox("피드백 모드", FEEDBACK_MODES, index=FEEDBACK_MODES.index(app_settings.get('feedback_mode', FEEDBACK_MODES[0])) if app_settings.get('feedback_mode') in FEEDBACK_MODES else 0)
+            if feedback_mode != app_settings.get('feedback_mode'):
+                save_setting("feedback_mode", feedback_mode)
+                st.rerun()
 
         st.divider()
         
