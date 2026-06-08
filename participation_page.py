@@ -85,10 +85,10 @@ def show_participation_status(season_res, all_quizzes):
             df = df[~df['User'].str.lower().str.contains('guest', na=False)]
 
 
-    st.write("--- 데이터 확인 ---")
-    st.write(df.head()) # 데이터가 어떻게 생겼는지 출력
-    st.write("Score 데이터 타입:", df['Score'].dtype) # 숫자인지 확인    
-    df['Score'] = pd.to_numeric(df['Score'], errors='coerce')
+    # st.write("--- 데이터 확인 ---")
+    # st.write(df.head()) # 데이터가 어떻게 생겼는지 출력
+    # st.write("Score 데이터 타입:", df['Score'].dtype) # 숫자인지 확인    
+    # df['Score'] = pd.to_numeric(df['Score'], errors='coerce')
 
     # 5. 피벗 테이블 생성 및 명단 재구성
     # 명단에 있는 유저만 필터링하여 데이터프레임 구성
