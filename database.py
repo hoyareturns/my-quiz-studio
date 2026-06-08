@@ -21,17 +21,19 @@ def get_backup_file_list():
         # 구글 계정(서비스 계정)이 접근할 수 있는 모든 스프레드시트 목록을 가져옵니다.
         all_files = drive_client.list_spreadsheet_files()
         
-        # 파일 데이터에서 이름('name')만 추출하여 리스트로 만듭니다.
-        # 팁: 백업 파일 이름에 'Backup'이나 '백업' 같은 단어가 공통으로 들어간다면
-        # [f['name'] for f in all_files if '백업' in f['name']] 처럼 필터링할 수도 있습니다.
-        file_names = [f['name'] for f in all_files]
+        # [핵심 로직]
+        # 메인 운영 파일인 '우정 파괴소 데이터베이스'를 제외한 모든 파일을 가져옵니다.
+        # (혹시 모를 띄어쓰기 차이를 대비해 두 가지 경우를 모두 제외합니다)
+        file_names = [
+            f['name'] for f in all_files 
+            if f['name'] != "우정 파괴소 데이터베이스" and f['name'] != "우정파괴소 데이터베이스"
+        ]
         
-        # 리스트를 내림차순 정렬 (파일 이름에 날짜가 있다면 최신 파일이 위로 올라오게 됨)
+        # 리스트를 내림차순 정렬 (최신 날짜/시간이 포함된 파일이 맨 위로 올라옵니다)
         file_names.sort(reverse=True)
         
         return file_names
     except Exception as e:
-        st.error(f"백업 파일 목록을 불러오는 중 오류 발생: {e}")
         return []
     
 # 3. 복구 함수 수정
