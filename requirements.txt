@@ -4,3 +4,4 @@ qrcode
 Pillow 
 gspread
 google-generativeai
+pytz
