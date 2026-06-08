@@ -4,6 +4,7 @@ from database import (get_all_quizzes, save_setting, save_chat, get_worksheet,
                       update_quiz, delete_quiz, reset_all_data)
 from prompts import VIEW_OPTIONS, FEEDBACK_MODES, EXTERNAL_PROMPT_TEMPLATE
 from database import restore_database_from_backup, get_backup_file_list
+from utils import trigger_google_sheet_backup, generate_default_backup_name
 
 def show_admin_sidebar(app_settings, get_kst_time):
     ADMIN_PASSWORD = "2662"
@@ -17,24 +18,31 @@ def show_admin_sidebar(app_settings, get_kst_time):
         
         # st.divider()
         with st.expander("데이터 보관 / 복구 / 새시즌"):           
-            # [백업 기능]
-            from utils import trigger_google_sheet_backup, generate_default_backup_name
-            
-            # 1. 자동 이름 생성 및 수정 가능한 입력창 제공
-            default_name = generate_default_backup_name()
-            custom_backup_name = st.text_input("백업 파일 이름 (원하시면 뒤에 꼬리표를 추가하세요)", value=default_name)
+           
+            # 1. 초기값 세팅 (세션에 없으면 생성)
+            if "backup_name" not in st.session_state:
+                st.session_state.backup_name = generate_default_backup_name()
+
+            # 2. 입력창 (key를 고정하여 값 유지)
+            # 사용자가 내용을 바꾸면 session_state.backup_name도 자동으로 업데이트됩니다.
+            custom_backup_name = st.text_input(
+                "백업 파일 이름", 
+                value=st.session_state.backup_name,
+                key="backup_name" # 세션 상태 변수와 키를 일치시키면 자동 동기화됨
+            )
             
             if st.button("지금 즉시 구글 시트 백업 실행", use_container_width=True):
                 if not custom_backup_name.strip():
                     st.warning("백업 파일 이름을 입력해주세요!")
                 else:
                     with st.spinner(f"'{custom_backup_name}' 이름으로 백업을 진행 중입니다..."):
-                        # 2. 수정한 파일 이름을 함수 인자로 확실하게 넘겨줍니다!
+                        # 백업 함수 호출
                         success, msg = trigger_google_sheet_backup(custom_backup_name)
                         if success:
                             st.success(f"'{custom_backup_name}' 백업이 완료되었습니다!")
                         else:
-                            st.error(f"백업 실패: {msg}")                
+                            st.error(f"백업 실패: {msg}")          
+                                
             # [복구 기능]
             from database import restore_database_from_backup, get_backup_file_list
             
