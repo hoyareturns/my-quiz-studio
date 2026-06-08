@@ -12,40 +12,43 @@ def show_admin_sidebar(app_settings, get_kst_time):
     pw = st.text_input("비밀번호", type="password", label_visibility="collapsed")
     
     if pw == ADMIN_PASSWORD:
-        st.success("인증 완료")
-        
-        # --- [추가] 구글 시트 백업 버튼 영역 ---
-        # st.subheader(" 데이터 보관")
-        # st.info("시즌 초기화 전, 현재 데이터를 구글 드라이브에 안전하게 백업해두세요.")
-        
-        if st.button(" 지금 즉시 구글 시트 백업 실행", use_container_width=True):
-            from utils import trigger_google_sheet_backup # utils에 있는 함수 호출
-            with st.spinner("구글 서버로 백업 명령을 전달 중입니다..."):
-                success, msg = trigger_google_sheet_backup()
-                if success:
-                    st.success(" 백업이 완료되었습니다! 구글 드라이브 폴더를 확인하세요.")
-                else:
-                    st.error(f" {msg}")
-        
-        # --- [복구 섹션: 체크박스 없이 즉시 실행] ---
+        st.success("인증 완료")     
         st.divider()
-        st.subheader("데이터 복구")
-        st.warning("입력한 파일명으로 기존 데이터를 즉시 덮어씁니다. 주의하세요!")
+        # --- 구글 시트 백업 및 복구 영역 ---
+        st.subheader("데이터 보관 및 복구")
         
-        # 1. 드라이브에서 백업 파일 목록 가져오기
+        # [백업 기능]
+        from utils import trigger_google_sheet_backup, generate_default_backup_name
+        
+        # 1. 자동 이름 생성 및 수정 가능한 입력창 제공
+        default_name = generate_default_backup_name()
+        custom_backup_name = st.text_input("백업 파일 이름 (원하시면 뒤에 꼬리표를 추가하세요)", value=default_name)
+        
+        if st.button("지금 즉시 구글 시트 백업 실행", use_container_width=True):
+            if not custom_backup_name.strip():
+                st.warning("백업 파일 이름을 입력해주세요!")
+            else:
+                with st.spinner(f"'{custom_backup_name}' 이름으로 백업을 진행 중입니다..."):
+                    # 2. 수정한 파일 이름을 함수 인자로 확실하게 넘겨줍니다!
+                    success, msg = trigger_google_sheet_backup(custom_backup_name)
+                    if success:
+                        st.success(f"'{custom_backup_name}' 백업이 완료되었습니다!")
+                    else:
+                        st.error(f"백업 실패: {msg}")
+        
+        st.divider()
+        
+        # [복구 기능]
+        from database import restore_database_from_backup, get_backup_file_list
+        
         backup_files = get_backup_file_list()
-
-        # 2. 드롭다운(selectbox) 생성
-        # 옵션 리스트 맨 앞에 빈 문자열("")을 넣고, index=0으로 설정하여 기본값을 공백으로 만듭니다.
         selected_backup_file = st.selectbox(
             "복구할 백업 파일을 선택하세요",
             options=[""] + backup_files,
             index=0
         )
-
-        # 3. 복구 실행 버튼
-        if st.button("데이터 복구 실행"):
-            # 파일이 선택되지 않은(공백인) 상태에서 버튼을 누른 경우 방어
+        
+        if st.button("데이터 복구 실행", use_container_width=True):
             if selected_backup_file == "":
                 st.warning("복구할 백업 파일을 먼저 선택해 주세요.")
             else:

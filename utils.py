@@ -2,6 +2,9 @@ import re
 import streamlit as st
 import google.generativeai as genai
 import requests
+import pytz
+from datetime import datetime
+
 
 def natural_sort_key(s):
     """문자열 내의 숫자를 숫자로 인식하여 정렬 (퀴즈2 < 퀴즈11)"""
@@ -197,25 +200,33 @@ def generate_quiz_with_ai(q_topic):
             continue
             
     raise Exception(f"모든 AI 모델 호출 실패. 마지막 에러: {last_error}")
+   
 
+def generate_default_backup_name():
+    """현재 시간을 기준으로 기본 백업 파일명을 생성합니다."""
+    tz = pytz.timezone('Asia/Seoul')
+    now = datetime.now(tz)
+    return f"퀴즈_백업_{now.strftime('%Y%m%d_%H%M')}"
 
-def trigger_google_sheet_backup():
+def trigger_google_sheet_backup(custom_name):
     """
-    구글 앱스 스크립트 웹 앱 URL을 호출하여 시트 백업을 실행합니다.
+    GAS 웹 앱을 사용하지 않고, 파이썬(gspread)에서 직접 시트를 복사하고 이름을 지정합니다.
     """
-    # 3단계에서 복사한 웹 앱 URL을 st.secrets에 저장했다고 가정합니다.
-    # 직접 문자열로 넣어도 되지만, 보안상 secrets.toml 사용을 권장합니다.
-    backup_url = st.secrets.get("GS_BACKUP_URL") 
+    # database.py에서 드라이브 클라이언트를 불러옵니다.
+    from database import get_gspread_drive_client 
     
-    if not backup_url:
-        return False, "백업 URL이 설정되지 않았습니다."
-
     try:
-        response = requests.get(backup_url)
-        if response.status_code == 200 and "Success" in response.text:
-            return True, "백업 성공"
-        else:
-            return False, f"백업 실패: {response.text}"
+        drive_client = get_gspread_drive_client()
+        main_sheet_id = st.secrets["SHEET_ID"]
+        
+        # 1. 현재 운영 중인 시트를 지정한 이름(custom_name)으로 복사합니다.
+        # 서비스 계정이 만들었기 때문에 자동으로 '복구 드롭다운 목록'에 뜨게 됩니다.
+        new_sheet = drive_client.copy(main_sheet_id, title=custom_name)
+        
+        # 2. (선택 사항) 사용자님의 개인 구글 계정에서도 이 백업 파일을 보려면 아래 주석을 풀고 이메일을 적어주세요.
+        # new_sheet.share('사용자님의구글계정@gmail.com', perm_type='user', role='writer')
+        
+        return True, "성공"
+        
     except Exception as e:
-        return False, f"연결 오류: {str(e)}"
-    
+        return False, str(e)
