@@ -51,7 +51,18 @@ def show_participation_status(season_res, all_quizzes):
 
     # 4. 기록 데이터 전처리
     df = pd.DataFrame(season_res)
-    
+    # [방어 로직] 컬럼명이 비어있거나 이상하면 강제로 지정
+    expected_cols = ['QuizTitle', 'User', 'Score', 'Duration', 'Time']
+    if len(df.columns) < len(expected_cols):
+        # 만약 데이터가 한 줄로 뭉쳐 읽혔다면, 콤마로 분리하여 강제 지정
+        df = df.iloc[:, 0].str.split(',', expand=True)
+        df.columns = expected_cols
+
+    # [핵심] 이제 여기에서 서식에 상관없이 0 처리 및 정제 수행
+    df['Score'] = pd.to_numeric(df['Score'], errors='coerce').fillna(0) # 에러는 0으로 처리
+    df['User'] = df['User'].astype(str).str.strip()
+    df['QuizTitle'] = df['QuizTitle'].astype(str).str.strip()
+
     if not df.empty:
         # [원천 차단] 데이터에서도 'test' 포함 아이디 삭제
         df = df[~df['User'].str.lower().str.contains('test', na=False)]
