@@ -30,6 +30,16 @@ def show_season_leaderboard(season_res, season_start, app_settings): # app_setti
         # min(top_count, len(quiz_df))를 통해 실제 데이터 개수와 설정값 중 작은 쪽을 선택합니다.
         for i in range(min(top_count, len(quiz_df))):
             row = quiz_df.iloc[i]
-            st.write(f"{i+1}위: {row['User']} ({int(row['Score'])}점 / {row['Duration']}초)")
-        
+            # 점수(Score) 데이터를 안전하게 정수로 변환하는 내장 방어 로직
+            try:
+                # 혹시 소수점(예: 100.0)이거나 문자열 숫자인 경우를 고려해 float 변환 후 int 처리
+                score_val = int(float(row.get('Score', 0)))
+            except (ValueError, TypeError):
+                # "완료"나 "-" 같은 숫자가 아닌 문자가 들어있으면 에러 대신 0점으로 처리
+                score_val = 0
+
+            # 화면 출력부 (정제된 score_val 변수 사용)
+            st.write(f"{i+1}위: {row['User']} ({score_val}점 / {row.get('Duration', '-')}초)")
+
+
         st.write("")
