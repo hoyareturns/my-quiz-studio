@@ -5,3 +5,6 @@ __pycache__/
 .streamlit/secrets.toml
 *.log
 artifacts/
+secrets.toml
+.env
+.cache/

@@ -1,0 +1,9 @@
+*
+!requirements.txt
+!web_app.py
+!web_config.py
+!web_storage.py
+!quiz_core.py
+!prompts.py
+!static/
+!static/**

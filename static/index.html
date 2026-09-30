@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#126b5e" />
+    <meta
+      name="description"
+      content="배우고, 확인하고, 함께 성장하는 스마트 평가 센터"
+    />
+    <title>스마트 평가 센터</title>
+    <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/vendor/katex/katex.min.css" />
+    <script src="/static/vendor/katex/katex.min.js?v=0.18.9" defer></script>
+    <script
+      src="/static/vendor/katex/contrib/auto-render.min.js?v=0.18.9"
+      defer
+    ></script>
+    <script src="/static/app.js?v=20260930" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문으로 이동</a>
+    <aside class="sidebar" aria-label="주 메뉴">
+      <a class="brand" href="#learn"
+        ><span class="brand-mark">S<span>·</span></span
+        ><span>스마트 평가 센터<small>LEARN AT YOUR PACE</small></span></a
+      >
+      <p class="nav-caption">나의 학습 공간</p>
+      <nav id="desktop-nav"></nav>
+      <div class="sidebar-note">
+        <span class="spark">✦</span><strong>조금씩, 더 나아지기</strong>
+        <p>오늘의 한 문제로<br />내일의 자신감을 쌓아요.</p>
+      </div>
+      <button class="quiet admin-trigger" type="button">관리자 로그인</button>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <a class="mobile-brand" href="#learn"
+          ><span class="brand-mark small">S<span>·</span></span
+          ><strong>스마트 평가 센터</strong></a
+        >
+        <span class="desktop-greeting">배움이 쌓이는 나만의 공간</span>
+        <button
+          id="profile-button"
+          class="profile"
+          type="button"
+          aria-label="학습자 이름 설정"
+        >
+          <span id="avatar">나</span><span id="profile-name">이름 설정</span
+          ><span aria-hidden="true">⌄</span>
+        </button>
+      </header>
+      <main id="main" tabindex="-1">
+        <div class="loading" role="status">
+          <span class="spinner"></span>학습 공간을 준비하고 있어요.
+        </div>
+      </main>
+      <footer class="page-footer">
+        스마트 평가 센터 <span>·</span> 매일 한 걸음씩
+      </footer>
+    </div>
+    <nav id="mobile-nav" class="mobile-nav" aria-label="모바일 주 메뉴"></nav>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <dialog id="profile-dialog" aria-labelledby="profile-title">
+      <form id="profile-form">
+        <div class="dialog-head">
+          <h2 id="profile-title">어떤 이름으로 학습할까요?</h2>
+          <button
+            type="button"
+            class="icon-button close-dialog"
+            aria-label="닫기"
+          >
+            ×
+          </button>
+        </div>
+        <p class="muted">
+          학습 기록에 사용할 이름을 입력해 주세요. 같은 이름을 계속 사용하면
+          기록을 모아 볼 수 있어요.
+        </p>
+        <label
+          >학습자 이름<input
+            id="profile-input"
+            maxlength="60"
+            required
+            autocomplete="nickname"
+            placeholder="예: 홍길동"
+        /></label>
+        <p class="field-hint">
+          공용 기기에서는 사용을 마친 뒤 이름을 지워 주세요.<br />이름으로
+          기록을 구분하며, 개인 계정 로그인은 아닙니다.
+        </p>
+        <div class="actions">
+          <button type="button" class="secondary" id="clear-profile">
+            이름 지우기</button
+          ><button class="primary">저장하고 계속</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="admin-dialog" aria-labelledby="admin-title">
+      <form id="admin-form">
+        <div class="dialog-head">
+          <h2 id="admin-title">관리자 로그인</h2>
+          <button
+            type="button"
+            class="icon-button close-dialog"
+            aria-label="닫기"
+          >
+            ×
+          </button>
+        </div>
+        <p class="muted">
+          문제를 등록하거나 수정하려면 관리자 인증이 필요합니다.
+        </p>
+        <label
+          >관리자 비밀번호<input
+            id="admin-password"
+            type="password"
+            required
+            autocomplete="current-password"
+        /></label>
+        <p id="admin-error" class="error" role="alert"></p>
+        <button class="primary full">로그인</button>
+      </form>
+    </dialog>
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+      <div class="dialog-head"><h2 id="confirm-title">확인해 주세요</h2></div>
+      <p id="confirm-message"></p>
+      <div class="actions">
+        <button class="secondary" id="confirm-no">취소</button
+        ><button class="primary" id="confirm-yes">계속</button>
+      </div>
+    </dialog>
+    <noscript>이 웹앱을 사용하려면 브라우저의 JavaScript를 켜 주세요.</noscript>
+  </body>
+</html>
