@@ -150,12 +150,15 @@ async function api(path, options = {}) {
     );
   }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok)
-    throw new Error(
+  if (!response.ok) {
+    const error = new Error(
       typeof data.detail === "string"
         ? data.detail
         : "입력 내용을 확인한 뒤 다시 시도해 주세요.",
     );
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 function toast(message) {
@@ -301,14 +304,36 @@ on("#admin-form", "submit", async (e) => {
     }
   });
 });
+const privatePages = new Set([
+  "review",
+  "records",
+  "leaderboard",
+  "participation",
+  "chat",
+]);
+const visibleNavs = () =>
+  navs.filter(([id]) => state.admin || !privatePages.has(id));
+const visibleMoreNavs = () =>
+  moreNavs.filter(([id]) => state.admin || !privatePages.has(id));
+function recordAccessGate() {
+  main.innerHTML = empty(
+    "기록 조회는 관리자만 이용할 수 있어요",
+    "직원의 학습 기록과 참여 현황을 보호하고 있습니다. 문제 풀기는 로그인 없이 이용할 수 있어요.",
+    '<button id="records-login" class="primary">관리자 로그인</button><a href="#learn" class="secondary">문제 풀기</a>',
+  );
+  on("#records-login", "click", adminAction);
+}
 function renderNav() {
   const link = ([id, label]) =>
     `<a class="nav-item ${state.page === id ? "active" : ""}" href="#${id}" ${state.page === id ? 'aria-current="page"' : ""}>${icon(id)}<span>${label}</span></a>`;
   $("#desktop-nav").innerHTML =
-    navs.map(link).join("") +
+    visibleNavs().map(link).join("") +
     '<div class="nav-divider"></div>' +
-    moreNavs.map(link).join("");
-  $("#mobile-nav").innerHTML = [...navs, ["more", "더보기"]]
+    visibleMoreNavs().map(link).join("");
+  $("#mobile-nav").innerHTML = [
+    ...visibleNavs(),
+    ["more", state.admin ? "더보기" : "관리"],
+  ]
     .map(([id, label]) =>
       link([id, label]).replace(
         "nav-item ",
@@ -392,6 +417,10 @@ async function route() {
     : "learn";
   renderNav();
   const revision = ++state.revision;
+  if (!state.admin && privatePages.has(state.page)) {
+    recordAccessGate();
+    return;
+  }
   try {
     if (state.page === "learn") renderLibrary();
     else if (state.page === "author") renderAuthor();
@@ -410,6 +439,13 @@ async function route() {
     }
   } catch (error) {
     if (revision === state.revision) {
+      if (error.status === 401 && privatePages.has(state.page)) {
+        state.admin = false;
+        updateProfile();
+        renderNav();
+        recordAccessGate();
+        return;
+      }
       main.innerHTML = empty(
         "잠시 연결을 확인해 주세요",
         error.message,
@@ -659,7 +695,7 @@ function renderQuestion() {
         .map((index) => index + 1)
         .join(", ");
       const proceed = await confirmAction(
-        `아직 답하지 않은 문제가 ${missing.length}개 있어요. (${numbers}${missing.length > 10 ? " 외" : ""}번) 그대로 제출하면 미응답은 모두 오답 처리되고 점수와 오답 노트에 반영됩니다.`,
+        `아직 답하지 않은 문제가 ${missing.length}개 있어요. (${numbers}${missing.length > 10 ? " 외" : ""}번) 그대로 제출하면 미응답은 모두 오답 처리되고 학습 기록에 반영됩니다.`,
         {
           title: "미응답 문제가 있어요",
           cancel: "돌아가서 문제 풀기",
@@ -691,7 +727,7 @@ function renderQuestion() {
 }
 function renderResult() {
   const r = state.result;
-  main.innerHTML = `<div class="narrow"><section class="panel"><div class="score-hero"><div class="eyebrow">LEARNING COMPLETE</div><h1>${r.score === 100 ? "모든 문제를 맞혔어요!" : "오늘도 한 걸음 나아갔어요."}</h1><p>${esc(state.attempt.title)}</p><div class="score-ring"><strong>${r.score}</strong><span>점 / 100점</span></div><p>${r.total}문제 중 ${r.correct}문제 정답 · ${Math.round(r.duration)}초</p></div>${r.saved ? notice("학습 기록에 저장했어요. 틀린 문제는 오답 노트에서 다시 풀 수 있어요.") : notice(r.message || "기록을 저장하지 못했어요. 아래에서 저장을 다시 시도해 주세요.", "warn")}<div class="actions">${!r.saved ? '<button id="retry-save" class="primary">기록 저장 다시 시도</button>' : ""}<button id="finish-quiz" class="${r.saved ? "primary" : "secondary"}">학습 세트로 돌아가기</button></div></section><section class="panel"><h2>답과 해설 돌아보기</h2>${r.review.map((item, i) => `<details class="review-item" ${!item.correct ? "open" : ""}><summary><span class="verdict ${item.correct ? "" : "wrong"}">${item.correct ? "정답" : "복습"}</span><span>${i + 1}. ${esc(item.question)}</span></summary><div class="answer-detail"><p>내 답: ${esc(item.answer)}</p><p><strong>정답: ${esc(item.correct_answer)}</strong></p><p>${esc(item.explanation)}</p></div></details>`).join("")}</section></div>`;
+  main.innerHTML = `<div class="narrow"><section class="panel"><div class="score-hero"><div class="eyebrow">LEARNING COMPLETE</div><h1>${r.score === 100 ? "모든 문제를 맞혔어요!" : "오늘도 한 걸음 나아갔어요."}</h1><p>${esc(state.attempt.title)}</p><div class="score-ring"><strong>${r.score}</strong><span>점 / 100점</span></div><p>${r.total}문제 중 ${r.correct}문제 정답 · ${Math.round(r.duration)}초</p></div>${r.saved ? notice("학습 기록에 저장했어요. 아래에서 정답과 해설을 확인해 보세요.") : notice(r.message || "기록을 저장하지 못했어요. 아래에서 저장을 다시 시도해 주세요.", "warn")}<div class="actions">${!r.saved ? '<button id="retry-save" class="primary">기록 저장 다시 시도</button>' : ""}<button id="finish-quiz" class="${r.saved ? "primary" : "secondary"}">학습 세트로 돌아가기</button></div></section><section class="panel"><h2>답과 해설 돌아보기</h2>${r.review.map((item, i) => `<details class="review-item" ${!item.correct ? "open" : ""}><summary><span class="verdict ${item.correct ? "" : "wrong"}">${item.correct ? "정답" : "복습"}</span><span>${i + 1}. ${esc(item.question)}</span></summary><div class="answer-detail"><p>내 답: ${esc(item.answer)}</p><p><strong>정답: ${esc(item.correct_answer)}</strong></p><p>${esc(item.explanation)}</p></div></details>`).join("")}</section></div>`;
   on("#retry-save", "click", (e) =>
     busy(e.target, async () => {
       state.result = await api(`/attempts/${state.attempt.attempt_id}/submit`, {
@@ -916,11 +952,18 @@ function renderPreview() {
 function renderMore() {
   main.innerHTML =
     heading(
-      "YOUR SPACE",
-      "함께 배우는 공간",
-      "기록을 나누고, 서로의 성장을 응원해요.",
+      "LEARNING CENTER",
+      state.admin ? "교육 운영 공간" : "운영 관리",
+      state.admin
+        ? "직원의 교육 참여와 학습 기록을 확인해요."
+        : "문제 풀기는 로그인 없이, 기록 조회와 운영은 관리자 로그인 후 이용해요.",
     ) +
-    `<div class="more-grid">${moreNavs.map(([id, title]) => `<a href="#${id}" class="more-card">${icon(id)}<div><strong>${title}</strong><small>${{ leaderboard: "주제별 우수 성취 기록", participation: "학습 세트별 참여 여부", chat: "질문과 배움 나누기", admin: "문제·설정·백업 관리" }[id]}</small></div></a>`).join("")}</div>`;
+    `<div class="more-grid">${visibleMoreNavs()
+      .map(
+        ([id, title]) =>
+          `<a href="#${id}" class="more-card">${icon(id)}<div><strong>${title}</strong><small>${{ leaderboard: "주제별 우수 성취 기록", participation: "학습 세트별 참여 여부", chat: "질문과 배움 나누기", admin: "문제·설정·백업 관리" }[id]}</small></div></a>`,
+      )
+      .join("")}</div>`;
 }
 function userGate() {
   main.innerHTML = empty(

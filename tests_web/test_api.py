@@ -139,6 +139,7 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(response.json()['score'], 0)
 
     def test_participation_filters_restore_legacy_rules_and_keep_real_zero_scores(self):
+        self.login()
         self.store.quiz_rows += [
             {'Title': '미풀이', 'Category': '공통', 'Content': CONTENT},
             {'Title': '수학시험', 'Category': '수학', 'Content': CONTENT}]
@@ -166,7 +167,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(rows['문자점수']['completed'], [])
         self.assertEqual(rows['수학학생']['completed'], [])
         self.assertEqual(rows['영점참여']['completed'], ['시험'])
-        self.assertTrue(all(r['scores'] == {} for r in rows.values()))
+        self.assertEqual(rows['영점참여']['scores']['시험'], 0)
         self.login()
         admin = self.client.get('/api/participation', params={'category':'공통'}).json()
         self.assertEqual(next(r for r in admin['rows'] if r['user']=='영점참여')['scores']['시험'], 0)
@@ -218,25 +219,54 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.delete(f'/api/quizzes/{self.quiz_id}').status_code, 200)
 
     def test_disconnected_is_explicit_and_does_not_leak_errors(self):
+        self.login()
         self.store.disconnected = True
         self.assertFalse(self.client.get('/api/bootstrap').json()['connected'])
         response = self.client.get('/api/results?user=학생')
         self.assertEqual(response.status_code, 503)
         self.assertIsInstance(response.json()['detail'], str)
 
-    def test_personal_results_scoped_and_participation_scores_admin_only(self):
+    def test_public_learning_does_not_expose_saved_employee_records(self):
         self.store.result_rows = [
             {'QuizTitle': '시험', 'User': '학생', 'Score': '50', 'Duration': '11', 'Time': '2026-09-30'},
             {'QuizTitle': '시험', 'User': '다른학생', 'Score': '100', 'Duration': '9', 'Time': '2026-09-30'}]
-        self.assertEqual(self.client.get('/api/results').status_code, 422)
-        self.assertEqual(len(self.client.get('/api/results?user=학생').json()['records']), 1)
-        self.assertTrue(all(r['scores'] == {} for r in self.client.get('/api/participation').json()['rows']))
-        self.assertEqual(self.client.get('/api/leaderboard').json()['records'][0]['user'], '다른학생')
+        self.store.chat_rows = [{'User': '학생', 'Message': '직원 대화', 'Time': '오늘'}]
+        for path in ['/api/results', '/api/results?user=학생', '/api/participation',
+                     '/api/leaderboard', '/api/wrongs?user=학생', '/api/chat']:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 401)
+                self.assertNotIn('다른학생', response.text)
+                self.assertNotIn('직원 대화', response.text)
+        self.assertEqual(self.client.post('/api/chat', json={'user':'학생','message':'위조'}).status_code, 401)
+        for action in ['answer','archive']:
+            self.assertEqual(self.client.post(f'/api/wrongs/forged/{action}',
+                             json=({'user':'학생','answer':'둘'} if action == 'answer' else {'user':'학생'})).status_code, 401)
+        self.assertEqual(len(self.store.chat_rows), 1)
+        # Public learners can still take a quiz and see their own immediate result.
+        attempt = self.attempt().json()
+        submitted = self.client.post(f"/api/attempts/{attempt['attempt_id']}/submit", json={'answers':['둘','서울']})
+        self.assertEqual(submitted.status_code, 200)
+        self.assertEqual(submitted.json()['score'], 100)
         self.login()
         self.assertEqual(len(self.client.get('/api/results').json()['records']), 2)
+        self.assertEqual(len(self.client.get('/api/results?user=학생').json()['records']), 1)
+        self.assertEqual(self.client.get('/api/leaderboard').json()['records'][0]['user'], '다른학생')
         self.assertEqual(self.client.get('/api/participation').json()['rows'][0]['scores']['시험'], 100)
+        self.now += 11
+        self.assertEqual(self.client.get('/api/participation').status_code, 401)
+
+    def test_https_public_origin_and_admin_cookie(self):
+        client = TestClient(self.app, base_url='https://training.example', headers={'Origin':'https://training.example'})
+        response = client.post('/api/admin/login', json={'password':'test-only'})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Secure', response.headers['set-cookie'])
+        self.assertEqual(client.get('/api/participation').status_code, 200)
+        client.post('/api/admin/logout', json={})
+        self.assertEqual(client.get('/api/participation').status_code, 401)
 
     def test_wrong_regrade_and_orphan_archive_preserve_identity(self):
+        self.login()
         self.store.wrong_rows = [
             {'QuizTitle': '시험', 'User': '학생', 'QuestionText': '합은?', 'Status': '오답'},
             {'QuizTitle': '삭제됨', 'User': '학생', 'QuestionText': '사라짐', 'Status': '오답'}]
@@ -254,6 +284,7 @@ class ApiTests(unittest.TestCase):
         self.assertNotEqual(self.store.wrong_rows[1]['Status'], '오답')
 
     def test_chat_settings_and_confirmed_restore(self):
+        self.login()
         self.assertEqual(self.client.post('/api/chat', json={'user': '학생', 'message': '안녕하세요'}).status_code, 200)
         self.assertEqual(self.client.get('/api/chat').json()['messages'][0]['message'], '안녕하세요')
         self.login()
@@ -301,6 +332,7 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn('never-return', self.client.get('/api/bootstrap').text)
 
     def test_leaderboard_applies_season_and_per_quiz_limit_after_best_attempt(self):
+        self.login()
         self.store.config.update(season_start='2026-09-01', top_achievers_count=2)
         self.store.result_rows = [
             {'QuizTitle': '시험', 'User': 'old', 'Score': 100, 'Duration': 1, 'Time': '2026-08-31'},
@@ -329,6 +361,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/admin/settings').json()['settings']['top_achievers_count'], 4)
 
     def test_season_boundary_includes_midnight_date_only_records(self):
+        self.login()
         self.store.config['season_start'] = '2026-09-01 00:00:00'
         self.store.result_rows = [{'QuizTitle': '시험', 'User': '학생', 'Score': 100, 'Duration': 1, 'Time': '2026-09-01'}]
         self.assertEqual(len(self.client.get('/api/leaderboard').json()['records']), 1)

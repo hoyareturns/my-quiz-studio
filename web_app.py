@@ -279,10 +279,10 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
                 questions, errors = validate_quiz_text(row.get('Content', ''))
                 quizzes.append({'id': quiz_id(title), 'title': title, 'category': str(row.get('Category', '공통')),
                                 'count': len(questions), 'valid': bool(title and questions and not errors and len(questions) <= 300 and titles.count(title) == 1)})
-            return {'quizzes': quizzes, 'admin': is_admin(request), 'connected': True, 'message': '',
+            return {'quizzes': quizzes, 'admin': is_admin(request), 'connected': True, 'message': '', 'records_private': True,
                     'settings': public_settings(storage.settings())}
         except StorageError as exc:
-            return {'quizzes': [], 'admin': is_admin(request), 'connected': False, 'message': str(exc),
+            return {'quizzes': [], 'admin': is_admin(request), 'connected': False, 'message': str(exc), 'records_private': True,
                     'settings': dict(PUBLIC_DEFAULTS)}
 
     @api.post('/api/attempts')
@@ -408,16 +408,16 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.get('/api/results')
     def results(request: Request, user: str = ''):
+        require_admin(request)
         user = user.strip()
-        if not user and not is_admin(request):
-            raise HTTPException(422, '기록을 확인할 학습자 이름을 입력해 주세요.')
         records = normalized_results()
         if user:
             records = [row for row in records if row['user'] == user]
         return {'records': sorted(records, key=lambda row: row['date'], reverse=True)}
 
     @api.get('/api/leaderboard')
-    def leaderboard():
+    def leaderboard(request: Request):
+        require_admin(request)
         # Keep each learner's best attempt for each quiz.
         settings = public_settings(storage.settings())
         season_start = settings['season_start']
@@ -444,6 +444,7 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
     @api.get('/api/participation')
     def participation(request: Request, category: str = '', exclude_guest: bool = True,
                       hide_empty: bool = True, only_participants: bool = True):
+        require_admin(request)
         quiz_rows = storage.quizzes()
         categories = sorted({str(q.get('Category') or '미분류') for q in quiz_rows}, key=natural_sort_key)
         quizzes = sorted({str(q.get('Title', '')).strip() for q in quiz_rows
@@ -476,7 +477,8 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
                 'rows': sorted(rows, key=lambda row: natural_sort_key(row['user']))}
 
     @api.get('/api/wrongs')
-    def wrongs(user: str = ''):
+    def wrongs(request: Request, user: str = ''):
+        require_admin(request)
         if not user.strip():
             raise HTTPException(422, '학습자 이름을 입력해 주세요.')
         quizzes = storage.quizzes()
@@ -495,7 +497,8 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
         return {'items': items}
 
     @api.post('/api/wrongs/{identifier}/answer')
-    def answer_wrong(identifier: str, body: AnswerInput):
+    def answer_wrong(identifier: str, body: AnswerInput, request: Request):
+        require_admin(request)
         row = find_wrong(identifier, body.user)
         question = wrong_question(row, storage.quizzes())
         if question is None:
@@ -507,7 +510,8 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
         return {key: result[key] for key in ('correct', 'correct_answer', 'explanation')} | {'message': '정답입니다. 오답 정복을 기록했습니다.' if result['correct'] else '아쉽습니다. 해설을 읽고 다시 도전해 보세요.'}
 
     @api.post('/api/wrongs/{identifier}/archive')
-    def archive_wrong(identifier: str, body: UserInput):
+    def archive_wrong(identifier: str, body: UserInput, request: Request):
+        require_admin(request)
         row = find_wrong(identifier, body.user)
         if wrong_question(row, storage.quizzes()) is not None:
             raise HTTPException(422, '원본 문제가 있는 오답은 다시 풀어 정복해 주세요.')
@@ -516,11 +520,13 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
         return {'message': '원본이 없는 오답을 보관했습니다.'}
 
     @api.get('/api/chat')
-    def chats():
+    def chats(request: Request):
+        require_admin(request)
         return {'messages': [{'user': str(row.get('User', '')), 'message': str(row.get('Message', '')), 'time': str(row.get('Time', ''))} for row in storage.chats()][-50:]}
 
     @api.post('/api/chat')
-    def chat(body: ChatInput):
+    def chat(body: ChatInput, request: Request):
+        require_admin(request)
         storage.save_chat(body.user, body.message)
         return {'message': '메시지를 등록했습니다.'}
 
