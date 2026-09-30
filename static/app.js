@@ -60,8 +60,22 @@ const moreNavs = [
   ["chat", "이야기 나누기"],
   ["admin", "관리"],
 ];
+function isReservedName(value) {
+  return ["관리자", "admin", "administrator"].includes(
+    value
+      .normalize("NFKC")
+      .replace(/[\s\p{Cf}]/gu, "")
+      .toLowerCase(),
+  );
+}
+let savedLearnerName = storage.get("quiz.user");
+if (isReservedName(savedLearnerName)) {
+  savedLearnerName = "";
+  storage.remove("quiz.user");
+}
 const state = {
-  user: storage.get("quiz.user"),
+  user: savedLearnerName,
+  learnerName: savedLearnerName,
   admin: false,
   quizzes: [],
   connected: false,
@@ -151,6 +165,11 @@ async function api(path, options = {}) {
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 401 && state.admin) {
+      state.admin = false;
+      updateProfile();
+      renderNav();
+    }
     const error = new Error(
       typeof data.detail === "string"
         ? data.detail
@@ -223,9 +242,11 @@ function requireUser(continuation) {
   }
   userContinuation = continuation;
   $("#profile-input").value = "";
+  $("#profile-error").textContent = "";
   $("#profile-dialog").showModal();
 }
 function updateProfile() {
+  state.user = state.admin ? "관리자" : state.learnerName;
   $("#profile-name").textContent = state.user || "이름 설정";
   $("#avatar").textContent = state.user ? state.user.slice(0, 1) : "나";
   $$(".admin-trigger").forEach(
@@ -234,21 +255,44 @@ function updateProfile() {
   );
 }
 on("#profile-button", "click", () => {
+  if (state.admin) {
+    toast("관리자 로그인 중에는 이름이 ‘관리자’로 고정됩니다.");
+    return;
+  }
   if (state.attempt && !state.result) {
     toast("풀이 중에는 학습자 이름을 바꿀 수 없어요.");
     return;
   }
   $("#profile-input").value = state.user;
+  $("#profile-error").textContent = "";
   $("#profile-dialog").showModal();
 });
-on("#profile-form", "submit", (e) => {
+on("#profile-form", "submit", async (e) => {
   e.preventDefault();
   const value = $("#profile-input").value.trim();
   if (!value) return;
-  state.user = value;
-  storage.set("quiz.user", value);
+  if (isReservedName(value)) {
+    $("#profile-error").textContent =
+      "‘관리자’는 관리자 로그인 후에만 사용할 수 있어요. 다른 이름을 입력해 주세요.";
+    return;
+  }
+  try {
+    const profile = await busy($("button.primary", e.target), () =>
+      api("/profile", { method: "POST", body: { user: value } }),
+    );
+    state.admin = profile.admin;
+  } catch (error) {
+    $("#profile-error").textContent = error.message;
+    return;
+  }
+  if (!state.admin) state.learnerName = value;
+  const retained = state.admin || storage.set("quiz.user", value);
   updateProfile();
   $("#profile-dialog").close();
+  if (!retained)
+    toast(
+      "이 브라우저에서는 이름을 저장할 수 없어 다음 접속 때 다시 입력해야 해요.",
+    );
   if (userContinuation) {
     const next = userContinuation;
     userContinuation = null;
@@ -256,7 +300,8 @@ on("#profile-form", "submit", (e) => {
   } else route();
 });
 on("#clear-profile", "click", () => {
-  state.user = "";
+  if (state.admin) return;
+  state.learnerName = "";
   storage.remove("quiz.user");
   updateProfile();
   $("#profile-dialog").close();
@@ -272,6 +317,14 @@ $$(".close-dialog").forEach((el) =>
 );
 on("#profile-dialog", "cancel", () => (userContinuation = null));
 async function adminAction() {
+  if (
+    state.attempt &&
+    !state.result &&
+    (state.admin || state.attempt.user !== "관리자")
+  ) {
+    toast("문제풀이를 마치거나 나간 뒤 관리자 로그인 상태를 변경해 주세요.");
+    return;
+  }
   if (state.admin) {
     await api("/admin/logout", { method: "POST" });
     state.admin = false;

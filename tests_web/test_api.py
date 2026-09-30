@@ -74,6 +74,50 @@ class ApiTests(unittest.TestCase):
     def attempt(self):
         return self.client.post('/api/attempts', json={'quiz_id': self.quiz_id, 'user': '학생'})
 
+    def test_admin_name_cannot_be_claimed_without_admin_session(self):
+        for name in ['관리자', '관 리 자', '관\u200b리자', 'ADMIN', 'ａｄｍｉｎ', 'administrator']:
+            with self.subTest(name=name):
+                self.assertEqual(self.client.post('/api/profile', json={'user': name}).status_code, 401)
+                self.assertEqual(self.client.post('/api/attempts', json={'quiz_id': self.quiz_id, 'user': name}).status_code, 401)
+                self.assertEqual(self.client.post('/api/chat', json={'user': name, 'message': '사칭'}).status_code, 401)
+                self.assertEqual(self.client.get('/api/wrongs', params={'user': name}).status_code, 401)
+                self.assertEqual(self.client.get('/api/results', params={'user': name}).status_code, 401)
+                for action in ['answer', 'archive']:
+                    payload = {'user': name, **({'answer': '둘'} if action == 'answer' else {})}
+                    self.assertEqual(self.client.post(f'/api/wrongs/fake/{action}', json=payload).status_code, 401)
+        self.assertEqual(self.store.chat_rows, [])
+        self.assertEqual(self.client.post('/api/profile', json={'user': '홍길동'}).json()['user'], '홍길동')
+
+    def test_admin_writes_use_admin_name_and_expiry_blocks_pending_submission(self):
+        self.login()
+        self.assertEqual(self.client.post('/api/profile', json={'user': '학생'}).json()['user'], '관리자')
+        self.client.post('/api/chat', json={'user': '학생', 'message': '공지'})
+        self.assertEqual(self.store.chat_rows[-1]['User'], '관리자')
+        aid = self.attempt().json()['attempt_id']
+        with patch.object(self.store, 'save_attempt', wraps=self.store.save_attempt) as save:
+            self.assertEqual(self.client.post(f'/api/attempts/{aid}/submit', json={'answers': ['둘', '서울']}).status_code, 200)
+            self.assertEqual(save.call_args.args[3], '관리자')
+        pending = self.attempt().json()['attempt_id']
+        self.now += 11
+        self.assertEqual(self.client.post(f'/api/attempts/{pending}/submit', json={'answers': ['둘', '서울']}).status_code, 401)
+        self.assertNotIn(pending, self.store.attempts)
+
+    def test_web_app_installation_assets(self):
+        manifest = self.client.get('/static/manifest.webmanifest')
+        self.assertEqual(manifest.status_code, 200)
+        data = manifest.json()
+        self.assertEqual(data['display'], 'standalone')
+        self.assertEqual(data['start_url'], '/#learn')
+        self.assertEqual(data['scope'], '/')
+        for icon in data['icons']:
+            image = self.client.get(icon['src'])
+            self.assertEqual(image.status_code, 200)
+            self.assertEqual(image.headers['content-type'], 'image/png')
+        worker = self.client.get('/sw.js')
+        self.assertEqual(worker.status_code, 200)
+        self.assertIn('javascript', worker.headers['content-type'])
+        self.assertEqual(worker.headers['cache-control'], 'no-cache')
+
     def test_attempt_hides_keys_and_server_grades_option_text(self):
         attempt = self.attempt().json()
         self.assertEqual(set(attempt['questions'][0]), {'p', 'q', 'o'})

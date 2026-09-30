@@ -262,6 +262,23 @@ small {
   margin-top: 16px;
   font-size: 12px;
 }
+.install-app {
+  flex-shrink: 0;
+  margin-left: auto;
+  margin-right: 12px;
+  color: var(--green);
+  border: 1px solid var(--line);
+}
+.install-app[hidden] {
+  display: none;
+}
+.install-steps {
+  padding-left: 22px;
+}
+.install-steps li {
+  margin: 16px 0;
+  line-height: 1.7;
+}
 .workspace {
   margin-left: 244px;
 }
@@ -1839,5 +1856,36 @@ svg {
   }
   .value-pause {
     flex-shrink: 0;
+  }
+}
+.install-app:not([hidden]) + .profile {
+  margin-left: 0;
+}
+@media (max-width: 480px) {
+  .topbar .install-app {
+    padding: 7px 9px;
+    margin-right: 4px;
+    font-size: 11px;
+    min-height: 36px;
+    white-space: nowrap;
+  }
+  .topbar .profile {
+    max-width: 108px;
+  }
+  .topbar .mobile-brand {
+    font-size: 12px;
+  }
+  .mobile-brand strong {
+    white-space: nowrap;
+  }
+}
+@media (max-width: 360px) {
+  .topbar .profile {
+    padding-left: 5px;
+    padding-right: 0;
+    max-width: 70px;
+  }
+  .topbar .profile #avatar {
+    display: none;
   }
 }

@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "스마트 평가 센터",
+  "short_name": "스마트 평가",
+  "lang": "ko",
+  "description": "회사 교육과 문제풀이를 위한 스마트 평가 센터",
+  "start_url": "/#learn",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f8f3",
+  "theme_color": "#126b5e",
+  "icons": [
+    {
+      "src": "/static/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

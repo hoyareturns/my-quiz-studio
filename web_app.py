@@ -13,6 +13,7 @@ import secrets
 import re
 from threading import RLock
 import time
+import unicodedata
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -32,6 +33,12 @@ class Input(BaseModel):
 
 class UserInput(Input):
     user: str = Field(min_length=1, max_length=80)
+
+
+def reserved_admin_name(user):
+    normalized = ''.join(c for c in unicodedata.normalize('NFKC', user)
+                         if not c.isspace() and unicodedata.category(c) != 'Cf').casefold()
+    return normalized in {'관리자', 'admin', 'administrator'}
 
 
 class AttemptInput(UserInput):
@@ -193,6 +200,18 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
         if not is_admin(request):
             raise HTTPException(401, '관리자 로그인이 필요합니다.')
 
+    def validate_user(user, request):
+        if reserved_admin_name(user) and not is_admin(request):
+            raise HTTPException(401, '관리자는 관리자 로그인 후에만 사용할 수 있는 이름입니다.')
+        return user.strip()
+
+    def actor_name(user, request):
+        return '관리자' if is_admin(request) else validate_user(user, request)
+
+    @api.post('/api/profile')
+    def profile(body: UserInput, request: Request):
+        return {'user': actor_name(body.user, request), 'admin': is_admin(request)}
+
     def find_quiz(identifier):
         matches = [row for row in storage.quizzes() if quiz_id(row.get('Title', '')) == identifier]
         if not matches:
@@ -287,7 +306,8 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.post('/api/attempts')
     @dataset_transaction
-    def start_attempt(body: AttemptInput):
+    def start_attempt(body: AttemptInput, request: Request):
+        user = actor_name(body.user, request)
         row = find_quiz(body.quiz_id)
         questions = parsed_quiz(row)
         with lock:
@@ -297,20 +317,21 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
             identifier = secrets.token_urlsafe(24)
             started = clock()
             attempts[identifier] = {'title': str(row['Title']), 'category': str(row.get('Category', '')),
-                                    'user': body.user, 'questions': questions, 'started': started,
+                                    'user': user, 'questions': questions, 'started': started,
                                     'expires': started + config.attempt_seconds, 'result': None, 'lock': RLock()}
-        return {'attempt_id': identifier, 'title': row['Title'], 'questions': [{key: q[key] for key in ('p', 'q', 'o')} for q in questions],
+        return {'attempt_id': identifier, 'title': row['Title'], 'user': user, 'questions': [{key: q[key] for key in ('p', 'q', 'o')} for q in questions],
                 'started_at': time.time()}
 
     @api.post('/api/attempts/{identifier}/submit')
     @dataset_transaction
-    def submit(identifier: str, body: SubmitInput):
+    def submit(identifier: str, body: SubmitInput, request: Request):
         with lock:
             attempt = attempts.get(identifier)
             if attempt is None or attempt['expires'] <= clock():
                 attempts.pop(identifier, None)
                 raise HTTPException(410, '평가 세션이 만료되었습니다. 평가를 다시 시작해 주세요.')
         with attempt['lock']:
+            validate_user(attempt['user'], request)
             if attempt['result'] is None:
                 answers = [value.strip() for value in body.answers]
                 if (len(answers) != len(attempt['questions']) or any(len(answer) > 4000 for answer in answers)
@@ -410,7 +431,7 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.get('/api/results')
     def results(request: Request, user: str = ''):
-        user = user.strip()
+        user = validate_user(user, request)
         if not user and not is_admin(request):
             raise HTTPException(422, '기록을 확인할 학습자 이름을 입력해 주세요.')
         records = normalized_results()
@@ -480,6 +501,7 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.get('/api/wrongs')
     def wrongs(request: Request, user: str = ''):
+        validate_user(user, request)
         if not user.strip():
             raise HTTPException(422, '학습자 이름을 입력해 주세요.')
         quizzes = storage.quizzes()
@@ -499,6 +521,7 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.post('/api/wrongs/{identifier}/answer')
     def answer_wrong(identifier: str, body: AnswerInput, request: Request):
+        validate_user(body.user, request)
         row = find_wrong(identifier, body.user)
         question = wrong_question(row, storage.quizzes())
         if question is None:
@@ -511,6 +534,7 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.post('/api/wrongs/{identifier}/archive')
     def archive_wrong(identifier: str, body: UserInput, request: Request):
+        validate_user(body.user, request)
         row = find_wrong(identifier, body.user)
         if wrong_question(row, storage.quizzes()) is not None:
             raise HTTPException(422, '원본 문제가 있는 오답은 다시 풀어 정복해 주세요.')
@@ -524,7 +548,7 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.post('/api/chat')
     def chat(body: ChatInput, request: Request):
-        storage.save_chat(body.user, body.message)
+        storage.save_chat(actor_name(body.user, request), body.message)
         return {'message': '메시지를 등록했습니다.'}
 
     @api.get('/api/admin/settings')
@@ -570,6 +594,11 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
         return {'message': '백업을 복구했습니다. 진행 중이던 평가는 다시 시작해 주세요.'}
 
     static = Path(__file__).parent / 'static'
+    @api.get('/sw.js')
+    def service_worker():
+        return FileResponse(static / 'sw.js', media_type='application/javascript',
+                            headers={'Cache-Control': 'no-cache'})
+
     @api.get('/')
     def index():
         if not (static / 'index.html').is_file():
