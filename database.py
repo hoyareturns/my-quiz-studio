@@ -1,23 +1,25 @@
 import streamlit as st
 import gspread
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import Counter
 import re
 import pandas as pd
+from utils import get_secret
 
 # 1. 기존 드라이브 전체 관리용 (새로 추가)
 @st.cache_resource
 def get_gspread_drive_client():
     """드라이브의 파일을 이름으로 검색/열기 위한 순수 드라이브 클라이언트"""
-    creds = json.loads(st.secrets["GCP_JSON"], strict=False)
+    creds = json.loads(get_secret("GCP_JSON") or "{}", strict=False)
     # gspread.service_account()는 드라이브 전체를 관리하는 객체를 반환합니다.
     return gspread.service_account_from_dict(creds)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_backup_file_list():
-    drive_client = get_gspread_drive_client()
     try:
+        drive_client = get_gspread_drive_client()
         # 구글 계정(서비스 계정)이 접근할 수 있는 모든 스프레드시트 목록을 가져옵니다.
         all_files = drive_client.list_spreadsheet_files()
         
@@ -34,12 +36,12 @@ def get_backup_file_list():
         
         return file_names
     except Exception as e:
-        return []
+        raise RuntimeError("백업 목록을 불러오지 못했습니다. 연결 설정을 확인해 주세요.") from e
     
 # 3. 복구 함수 수정
 def restore_database_from_backup(backup_filename):
-    drive_client = get_gspread_drive_client()
     try:
+        drive_client = get_gspread_drive_client()
         # 1. 원본(메인) 파일과 백업 파일을 엽니다.
         main_sheet = get_gspread_client()
         backup_sheet = drive_client.open(backup_filename)
@@ -62,41 +64,84 @@ def restore_database_from_backup(backup_filename):
             data = backup_ws.get_all_values(value_render_option='UNFORMATTED_VALUE')
             main_ws.update(data, value_input_option='RAW')
             
+        clear_data_cache()
+        get_worksheet_cached.clear()
         return True
     except Exception as e:
-        st.error(f"복구 실패: {e}")
+        st.error('복구에 실패했습니다. 연결 상태와 시트 접근 권한을 확인해 주세요.')
         return False
 
 def get_kst_time():
-    return (datetime.utcnow() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
+    return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
-@st.cache_resource
+@st.cache_resource(ttl=60, show_spinner=False)
 def get_gspread_client():
     try:
-        creds = json.loads(st.secrets["GCP_JSON"], strict=False)
-        return gspread.service_account_from_dict(creds).open_by_key(st.secrets["SHEET_ID"])
+        raw, sheet_id = get_secret("GCP_JSON"), get_secret("SHEET_ID")
+        if not raw or not sheet_id:
+            return None
+        creds = json.loads(raw, strict=False)
+        return gspread.service_account_from_dict(creds).open_by_key(sheet_id)
     except: return None
+
+@st.cache_resource(ttl=300, show_spinner=False)
+def get_worksheet_cached(sheet_name):
+    sh = get_gspread_client()
+    if sh is None:
+        raise RuntimeError("Google Sheets 연결 설정을 확인해 주세요.")
+    return sh.worksheet(sheet_name)
+
 
 def get_worksheet(sheet_name, columns=None):
     try:
-        sh = get_gspread_client()
-        if not sh: return None
-        try: return sh.worksheet(sheet_name)
-        except gspread.exceptions.WorksheetNotFound:
-            if columns:
-                ws = sh.add_worksheet(title=sheet_name, rows="100", cols=len(columns))
-                ws.append_row(columns); return ws
+        return get_worksheet_cached(sheet_name)
+    except gspread.exceptions.WorksheetNotFound:
+        if not columns:
             return None
-    except: return None
+        sh = get_gspread_client()
+        ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=len(columns))
+        ws.append_row(list(columns), value_input_option="RAW")
+        get_worksheet_cached.clear()
+        return ws
+    except RuntimeError:
+        return None
 
-@st.cache_data(ttl=10)
+
+def require_worksheet(sheet_name, columns=None):
+    ws = get_worksheet(sheet_name, columns)
+    if ws is None:
+        raise RuntimeError("저장할 시트에 연결하지 못했습니다. 연결 설정을 확인해 주세요.")
+    return ws
+
+
+def append_attempt_once(ws, rows, attempt_id):
+    """Reconcile a timed-out append before repeating it; retain legacy columns."""
+    headers = ws.row_values(1)
+    if "AttemptID" not in headers:
+        column = len(headers) + 1
+        if ws.col_count < column:
+            ws.add_cols(column - ws.col_count)
+        ws.update_cell(1, column, "AttemptID")
+    else:
+        column = headers.index("AttemptID") + 1
+    if attempt_id in ws.col_values(column)[1:]:
+        return
+    payload = []
+    for row in rows:
+        values = list(row) + [""] * max(0, column - len(row))
+        values[column - 1] = attempt_id
+        payload.append(values)
+    ws.append_rows(payload, value_input_option="RAW")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
 def get_all_quizzes():
     ws = get_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
     if ws:
         return sorted(ws.get_all_records(), key=lambda x: x.get('CreatedAt', ''), reverse=True)
     return []
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_settings():
     ws = get_worksheet("Settings", ["Key", "Value"])
     if ws:
@@ -120,20 +165,20 @@ def save_setting(key, value):
             return False, f"저장 중 오류 발생: {str(e)}"
     return False, "워크시트를 찾을 수 없습니다."
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=15, show_spinner=False)
 def get_chats():
     ws = get_worksheet("Chats", ["User", "Message", "Time"])
     if ws: return ws.get_all_records()[-50:]
     return []
 
 def save_chat(user, msg):
-    ws = get_worksheet("Chats")
+    ws = require_worksheet("Chats", ["User", "Message", "Time"])
     if ws:
         ws.append_row([user, msg, get_kst_time()])
         # [핵심 로직] 채팅 작성 즉시 캐시 강제 삭제 (새로고침 불필요)
         get_chats.clear()
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=30, show_spinner=False)
 def get_all_results():
     """Results 시트의 모든 데이터를 가져오며, 점수와 시간을 정수로 정리합니다."""
     ws = get_worksheet("Results")
@@ -158,18 +203,35 @@ def get_all_results():
     return []
 
 def save_quiz(title, cat, content):
-    ws = get_worksheet("Quizzes")
-    if ws:
-        ws.append_row([cat, title, content, get_kst_time()])
-        get_all_quizzes.clear()
+    from utils import validate_quiz_text
+    questions, errors = validate_quiz_text(content)
+    if not title.strip() or not cat.strip() or errors or not questions:
+        raise ValueError("제목·분류·문제 형식을 확인해 주세요.")
+    get_all_quizzes.clear()
+    if any(str(q.get("Title")) == title.strip() for q in get_all_quizzes()):
+        raise ValueError("같은 제목의 퀴즈가 있습니다. 다른 제목을 입력해 주세요.")
+    ws = require_worksheet("Quizzes", ["Category", "Title", "Content", "CreatedAt"])
+    ws.append_row([cat.strip(), title.strip(), content, get_kst_time()], value_input_option="RAW")
+    get_all_quizzes.clear()
+    return True
 
-def update_quiz(old_title, new_cat, new_tit):
+
+def update_quiz(old_title, new_cat, new_tit, content=None):
     ws = get_worksheet("Quizzes")
     if ws:
         cell = ws.find(old_title, in_column=2)
         if cell:
-            ws.update_cell(cell.row, 1, new_cat)
-            ws.update_cell(cell.row, 2, new_tit)
+            if content is not None:
+                from utils import validate_quiz_text
+                questions, errors = validate_quiz_text(content)
+                if errors or not questions:
+                    raise ValueError("문제 형식을 확인해 주세요.")
+            # Titles identify results and wrong answers in the existing data model.
+            if old_title != new_tit:
+                raise ValueError("기록 연결을 위해 기존 퀴즈의 제목은 변경할 수 없습니다.")
+            values = [[new_cat, new_tit, content]] if content is not None else [[new_cat, new_tit]]
+            end = "C" if content is not None else "B"
+            ws.update(range_name=f"A{cell.row}:{end}{cell.row}", values=values, value_input_option="RAW")
             get_all_quizzes.clear()
             return True
     return False
@@ -186,23 +248,31 @@ def delete_quiz(title):
 
 # database.py 하단에 아래 내용을 추가해 주세요.
 
-def save_wrong_answers(quiz_title, user_name, wrong_questions):
-    """틀린 문제들을 WrongAnswers 시트에 저장합니다."""
-    ws = get_worksheet("WrongAnswers", ["QuizTitle", "User", "QuestionText", "Status", "CreatedAt"])
-    if ws:
-        for q_text in wrong_questions:
-            # 상태는 '오답'으로 저장
-            ws.append_row([quiz_title, user_name, q_text, "오답", get_kst_time()])
-        get_wrong_answers_by_user.clear()
+def save_wrong_answers(quiz_title, user_name, wrong_questions, attempt_id=None):
+    if not wrong_questions:
+        return True
+    ws = require_worksheet("WrongAnswers", ["QuizTitle", "User", "QuestionText", "Status", "CreatedAt"])
+    now = get_kst_time()
+    rows = [[quiz_title, user_name, q, "오답", now] for q in wrong_questions]
+    if attempt_id:
+        append_attempt_once(ws, rows, attempt_id)
+    else:
+        ws.append_rows(rows, value_input_option="RAW")
+    get_all_wrong_answers.clear()
+    get_wrong_answers_by_user.clear()
+    return True
 
-@st.cache_data(ttl=5)
-def get_wrong_answers_by_user(user_name):
-    """특정 유저의 오답 목록 중 아직 정복하지 않은 것만 가져옵니다."""
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_all_wrong_answers():
     ws = get_worksheet("WrongAnswers")
-    if not ws: return []
-    all_rows = ws.get_all_records()
-    # '오답' 상태인 데이터만 필터링
-    return [r for r in all_rows if str(r.get('User')) == str(user_name) and r.get('Status') == "오답"]
+    return ws.get_all_records() if ws is not None else []
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_wrong_answers_by_user(user_name):
+    return [r for r in get_all_wrong_answers() if str(r.get('User')) == str(user_name) and r.get('Status') == "오답"]
+
 
 def update_wrong_answer_status(user_name, quiz_title, question_text, new_status):
     """문제를 맞혔을 때 상태를 '정복'으로 업데이트합니다."""
@@ -217,18 +287,15 @@ def update_wrong_answer_status(user_name, quiz_title, question_text, new_status)
                 row.get('Status') == "오답"):
                 # 시트 인덱스는 헤더 포함 1-based 이므로 i + 2
                 ws.update_cell(i + 2, 4, new_status)
+                get_all_wrong_answers.clear()
                 get_wrong_answers_by_user.clear()
                 return True
     except: pass
     return False
 
 def get_all_users_with_wrongs():
-    """오답 기록이 남아있는 유저 목록만 가져옵니다."""
-    ws = get_worksheet("WrongAnswers")
-    if not ws: return []
-    data = ws.get_all_records()
-    users = {str(r.get('User')) for r in data if r.get('Status') == "오답"}
-    return sorted(list(users))
+    return sorted({str(r.get("User")) for r in get_all_wrong_answers() if r.get("Status") == "오답"})
+
 
 def reset_all_data():
     """모든 시트의 데이터를 1번 줄 제외하고 삭제"""
@@ -243,13 +310,14 @@ def reset_all_data():
                 if len(all_values) > 1:
                     # 2행부터 마지막 행까지 한 번에 삭제
                     ws.delete_rows(2, len(all_values))
+        clear_data_cache()
         return True, "모든 데이터가 초기화되었습니다."
     except Exception as e:
         return False, f"초기화 중 오류 발생: {str(e)}"
     
-def save_wrong_answers_detailed(quiz_title, category, player_name, wrong_items, kst_time_func):
+def save_wrong_answers_detailed(quiz_title, category, player_name, wrong_items, kst_time_func, attempt_id=None):
     """신규 시트(WrongAnswers_Logs)에 오답의 모든 디테일을 기록"""
-    ws = get_worksheet("WrongAnswers_Logs")
+    ws = require_worksheet("WrongAnswers_Logs", ["Time", "User", "Category", "Quiz Title", "Passage", "Question", "Options", "Answer", "Explanation"])
     if ws:
         rows = []
         for it in wrong_items:
@@ -269,41 +337,30 @@ def save_wrong_answers_detailed(quiz_title, category, player_name, wrong_items, 
             ])
         
         if rows:
-            ws.append_rows(rows)
+            if attempt_id:
+                append_attempt_once(ws, rows, attempt_id)
+            else:
+                ws.append_rows(rows, value_input_option="RAW")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30, show_spinner=False)
 def get_unique_players():
-    """Results 시트에서 중복 없는 유저 목록을 가져옵니다."""
-    ws = get_worksheet("Results")
-    if ws:
-        try:
-            records = ws.get_all_records()
-            # [수정] 시트 헤더가 'User'이므로 'Name' 대신 'User'를 가져옵니다.
-            names = list(set(str(r.get('User', '')).strip() for r in records if r.get('User')))
-            return names
-        except Exception as e:
-            return []
-    return []
+    return sorted({str(r.get("User", "")).strip() for r in get_all_results() if r.get("User")})
 
-def save_result(title, user, score, duration, wrongs):
-    """결과 저장 시 점수와 시간을 반올림하여 저장합니다."""
-    res_ws = get_worksheet("Results")
-    if res_ws: 
-        # [수정] score와 duration을 int()로 감싸서 소수점을 완전히 제거합니다.
-        # 시트 순서: QuizTitle, User, Score, Duration, Time
-        res_ws.append_row([
-            title, 
-            user, 
-            int(score), 
-            int(duration), 
-            get_kst_time()
-        ])
-    
-    if wrongs:
-        wr_ws = get_worksheet("WrongAnswers")
-        if wr_ws: 
-            # 오답 기록 저장
-            [wr_ws.append_row([user, k, get_kst_time()]) for k in wrongs]
-    
-    # 성적 저장 즉시 캐시 강제 삭제 (기존 로직 유지)
+
+def save_result(title, user, score, duration, wrongs=None, attempt_id=None):
+    ws = require_worksheet("Results", ["QuizTitle", "User", "Score", "Duration", "Time"])
+    row = [title, user, int(round(score)), int(round(duration)), get_kst_time()]
+    if attempt_id:
+        append_attempt_once(ws, [row], attempt_id)
+    else:
+        ws.append_row(row, value_input_option="RAW")
+    # Wrong answers are saved by save_wrong_answers using the correct schema.
     get_all_results.clear()
+    get_unique_players.clear()
+    return True
+
+
+def clear_data_cache():
+    for fn in (get_all_quizzes, get_settings, get_chats, get_all_results,
+               get_unique_players, get_all_wrong_answers, get_wrong_answers_by_user, get_backup_file_list):
+        fn.clear()

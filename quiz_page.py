@@ -1,219 +1,179 @@
-import streamlit as st
-import streamlit.components.v1 as components
-import pandas as pd
 import time
-from database import get_all_quizzes, save_quiz, save_result, save_wrong_answers, save_wrong_answers_detailed
-from utils import generate_quiz_with_ai, check_subjective_answer, natural_sort_key, robust_parse
+import uuid
+import streamlit as st
+from database import save_result, save_wrong_answers, save_wrong_answers_detailed, get_all_results
+from utils import check_subjective_answer, natural_sort_key, validate_quiz_text
+
+
+def reset_attempt():
+    st.session_state.update(selected_quiz="", quiz_snapshot=None, start_time=None,
+                            quiz_finished=False, user_answers={}, results_saved=False,
+                            review_data=[], save_steps={}, pending_result=None)
+
+
+def select_quiz(quiz):
+    reset_attempt()
+    st.session_state.selected_quiz = quiz["Title"]
+    st.session_state.quiz_snapshot = dict(quiz)
+
 
 def show_quiz_area(quizzes, season_res, app_settings, player_name, robust_parse_func, get_kst_time):
-
-    if "results_saved" not in st.session_state:
-            st.session_state.results_saved = False
-
-    # 1. 실제 데이터에 존재하는 모든 카테고리 추출
-    cats_in_data = set(q.get('Category', '미분류') for q in quizzes)
-    
-    # 2. 어드민 설정값 가져오기
-    default_cat = app_settings.get("default_category") # '처음 열릴 카테고리'
-    custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
-    
-    # 3. [핵심 수정] 탭 목록 재구성: 데이터가 있는 경우만 포함 (우정퀴즈는 항상 포함)
-    all_display_cats = []
-    
-    # [1순위] 어드민이 지정한 '처음 열릴 카테고리'
-    # 우정퀴즈이거나 실제 퀴즈 데이터가 있는 경우에만 추가합니다.
-    if default_cat:
-        if default_cat == "우정퀴즈" or default_cat in cats_in_data:
-            all_display_cats.append(default_cat)
-        
-    # [2순위] 우정퀴즈 (데이터 유무와 상관없이 항상 노출)
-    if "우정퀴즈" not in all_display_cats:
-        all_display_cats.append("우정퀴즈")
-        
-    # [3순위] 어드민 '카테고리 목록'에 적힌 항목들 중 퀴즈가 있는 것만 추가
-    for c in custom_cats:
-        if c not in all_display_cats and c in cats_in_data:
-            all_display_cats.append(c)
-            
-    # [4순위] 그 외 데이터에만 있는 카테고리들 가나다순 정렬
-    remaining_cats = sorted([c for c in cats_in_data if c not in all_display_cats])
-    all_display_cats += remaining_cats
-
-    # 탭 생성 (필터링된 목록 사용)
-    if not all_display_cats:
-        st.info("표시할 퀴즈 카테고리가 없습니다.")
+    if st.session_state.selected_quiz:
+        item = st.session_state.get("quiz_snapshot") or next((q for q in quizzes if q["Title"] == st.session_state.selected_quiz), None)
+        if item:
+            render_quiz_detail(item, season_res, app_settings, player_name, robust_parse_func, get_kst_time)
+            return
+        reset_attempt()
+    st.subheader("오늘은 무엇을 배워 볼까요?")
+    st.caption("분류를 고르거나 제목을 검색해 퀴즈를 찾아보세요.")
+    if not quizzes:
+        st.info("아직 등록된 퀴즈가 없습니다. 문제 등록 메뉴에서 첫 퀴즈를 준비해 보세요.")
         return
+    categories = sorted({str(q.get("Category") or "미분류") for q in quizzes}, key=natural_sort_key)
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        preferred = app_settings.get("default_category")
+        options = ["전체"] + categories
+        category = st.selectbox("분류", options, index=options.index(preferred) if preferred in options else 0, key="quiz_filter")
+    with c2:
+        search = st.text_input("퀴즈 검색", placeholder="제목이나 키워드를 입력하세요", key="quiz_search")
+    visible = sorted([q for q in quizzes if (category == "전체" or str(q.get("Category") or "미분류") == category) and search.casefold().strip() in str(q["Title"]).casefold()], key=lambda q: natural_sort_key(q["Title"]))
+    st.caption(f"{len(visible)}개의 퀴즈")
+    if not visible:
+        st.info("검색 결과가 없습니다. 검색어나 분류를 바꿔 보세요.")
+    for index, quiz in enumerate(visible):
+        with st.container(border=True):
+            st.caption(str(quiz.get("Category") or "미분류"))
+            st.button(quiz["Title"], key=f"quiz_pick_{index}", use_container_width=True, on_click=select_quiz, args=(quiz,))
+            st.caption("선택하면 문제 수와 안내를 확인할 수 있습니다.")
 
-    tabs = st.tabs(all_display_cats)
-    
-    for i, cat in enumerate(all_display_cats):
-        with tabs[i]:
-            if cat == "우정퀴즈":
-                render_ai_generation_ui()
-            
-            # 4. [핵심] 퀴즈 버튼 정렬: 1번부터 오름차순 정렬
-            cat_qs = [q for q in quizzes if q.get('Category') == cat]
-            cat_qs = sorted(cat_qs, key=lambda x: natural_sort_key(x['Title']))
-            
-            if not cat_qs:
-                if cat != "우정퀴즈":
-                    st.caption(f"'{cat}' 그룹에 등록된 퀴즈가 없습니다.")
-            else:
-                # [수정 포인트] 가로 줄(Row) 단위로 2개씩 묶어서 버튼 배치
-                # 리스트를 2개씩 건너뛰며 반복문을 실행합니다.
-                for j in range(0, len(cat_qs), 2):
-                    cols = st.columns(2) # 매 줄마다 새로운 2개 컬럼 생성
-                    
-                    # 현재 줄의 첫 번째 칸 (홀수 번째 퀴즈)
-                    with cols[0]:
-                        q = cat_qs[j]
-                        if st.button(q['Title'], use_container_width=True, key=f"btn_{cat}_{j}"):
-                            st.session_state.selected_quiz = q['Title']
-                            st.session_state.results_saved = False
-                            st.session_state.quiz_finished = False
-                            st.session_state.user_answers = {}
-                            st.session_state.start_time = None
-                            st.session_state.quiz_jump = True 
-                            st.rerun()
-                    
-                    # 현재 줄의 두 번째 칸 (짝수 번째 퀴즈 - 존재할 경우에만 생성)
-                    if j + 1 < len(cat_qs):
-                        with cols[1]:
-                            q = cat_qs[j+1]
-                            if st.button(q['Title'], use_container_width=True, key=f"btn_{cat}_{j+1}"):
-                                st.session_state.selected_quiz = q['Title']
-                                st.session_state.results_saved = False
-                                st.session_state.quiz_finished = False
-                                st.session_state.user_answers = {}
-                                st.session_state.start_time = None
-                                st.session_state.quiz_jump = True 
-                                st.rerun()
-
-            if st.session_state.selected_quiz:
-                selected_q_item = next((q for q in quizzes if q['Title'] == st.session_state.selected_quiz), None)
-                if selected_q_item and selected_q_item.get('Category') == cat:
-                    render_quiz_detail(selected_q_item, season_res, app_settings, player_name, robust_parse_func, get_kst_time)
-
-def render_ai_generation_ui():
-    with st.expander("나만의 우정 파괴 퀴즈 만들기"):
-        q_title = st.text_input("퀴즈 제목", placeholder="예: 길동이의 우정 테스트" , key="ai_title")
-        q_topic = st.text_input("퀴즈 주제", placeholder="예: 설명하는 동물의 이름",  key="ai_topic")
-        
-        if st.button("AI 출제 시작"):            
-            # [수정] api_key 체크를 제거하고 제목과 주제 입력 여부만 확인합니다.
-            if q_title and q_topic:
-                with st.spinner("생성 중..."):
-                    # 실제 API 키 처리는 generate_quiz_with_ai 함수 내부에서 수행됩니다.
-                    text = generate_quiz_with_ai(q_topic)
-                    save_quiz(q_title, "우정퀴즈", text)
-                    get_all_quizzes.clear()
-                    st.rerun()
-            else:
-                st.warning("퀴즈 제목과 주제를 모두 입력해주세요.")
 
 def render_quiz_detail(q_item, season_res, app_settings, player_name, robust_parse_func, get_kst_time):
-    st.markdown("<div id='quiz_start_anchor'></div>", unsafe_allow_html=True)
-    if st.session_state.get('quiz_jump'):
-        components.html("<script>window.parent.document.getElementById('quiz_start_anchor').scrollIntoView({behavior: 'smooth'});</script>", height=0)
-        st.session_state.quiz_jump = False
-
-    with st.container(border=True):
-        st.markdown(f"### {q_item['Title']}")
-        
-        # [복구] 상세 페이지 내 지배자들 랭킹 표시
-        q_res = [r for r in season_res if r.get('QuizTitle') == q_item['Title']]
-        with st.expander(" 성적 기록", expanded=True):
-            if q_res:
-                s_df = pd.DataFrame(q_res).sort_values(by=['Score', 'Duration'], ascending=[False, True]).reset_index(drop=True)
-                s_df.index = range(1, len(s_df) + 1)
-                st.table(s_df[['User', 'Score', 'Duration']].rename(columns={'User':'수험번호', 'Score':'점수', 'Duration':'시간'}))
-            else: 
-                st.info(" ")
-
-        if st.session_state.start_time is None and not st.session_state.quiz_finished:
-            if st.button("시험 시작하기", use_container_width=True, type="primary"):
-                st.session_state.start_time = time.time()
-                st.rerun()
-        
-        elif not st.session_state.quiz_finished:
-            parsed = robust_parse_func(q_item['Content'])
-            for idx, it in enumerate(parsed):
-                st.divider()
-                
-                # [복구] 지문이 있으면 지문 박스 표시
-                if it.get('p'):
-                    with st.container(border=True):
-                        st.markdown(f"📄 **[지문]**\n\n{it['p']}")
-                
-                st.markdown(f"**Q{idx+1}.** {it['q']}")
-                
-                if it['o'] == ["주관식"]:
-                    st.session_state.user_answers[f"ans_{idx}"] = st.text_input("정답 입력", key=f"in_{idx}")
-                else:
-                    st.session_state.user_answers[f"ans_{idx}"] = st.radio("보기", it['o'], index=None, key=f"in_{idx}", label_visibility="collapsed")
-
-            if st.button("최종 제출", use_container_width=True):
-                score_logic(parsed, q_item, player_name, get_kst_time)
-
+    parsed, errors = validate_quiz_text(q_item["Content"])
     if st.session_state.quiz_finished:
         render_results()
+        return
+    st.caption(str(q_item.get("Category") or "미분류"))
+    st.subheader(q_item["Title"])
+    if errors or not parsed:
+        st.error("문제 형식을 확인해야 합니다. 관리자에게 수정을 요청해 주세요.")
+        for error in errors:
+            st.caption(error)
+        st.button("목록으로 돌아가기", on_click=reset_attempt)
+        return
+    if st.session_state.start_time is None:
+        short_count = sum(q["o"] == ["주관식"] for q in parsed)
+        st.info(f"총 {len(parsed)}문제 · 객관식 {len(parsed)-short_count} · 주관식 {short_count}")
+        st.write("모든 답을 입력한 뒤 제출하면 점수와 해설을 볼 수 있습니다.")
+        if short_count:
+            st.caption("주관식은 등록된 정답과 비교합니다. 공백·대소문자는 구분하지 않으며, 별도의 AI 채점은 없습니다.")
+        if not player_name.strip():
+            st.warning("상단에서 학습자 이름을 입력한 뒤 시작해 주세요.")
+        def start():
+            st.session_state.start_time = time.time()
+            st.session_state.attempt_id = uuid.uuid4().hex
+            st.session_state.attempt_player = player_name.strip()
+            st.session_state.save_steps = {}
+        st.button("풀이 시작", type="primary", use_container_width=True, disabled=not player_name.strip(), on_click=start)
+        st.button("다른 퀴즈 선택", use_container_width=True, on_click=reset_attempt)
+        if st.checkbox("이 퀴즈의 성적 기록 보기"):
+            rows = [r for r in get_all_results() if r.get("QuizTitle") == q_item["Title"]]
+            if rows:
+                import pandas as pd
+                st.dataframe(pd.DataFrame(rows)[["User", "Score", "Duration"]].rename(columns={"User":"학습자", "Score":"점수", "Duration":"시간(초)"}), hide_index=True, use_container_width=True)
+            else:
+                st.caption("아직 기록이 없습니다.")
+        return
+
+    st.caption(f"{st.session_state.attempt_player}님 · {len(parsed)}문제 · 답안은 제출할 때 한 번에 전송됩니다.")
+    with st.form(f"answers_{st.session_state.attempt_id}"):
+        answers = {}
+        for index, item in enumerate(parsed):
+            st.markdown(f"#### {index+1}. {item['q']}")
+            if item.get("p"):
+                st.info(item["p"])
+            key = f"answer_{st.session_state.attempt_id}_{index}"
+            if item["o"] == ["주관식"]:
+                answers[index] = st.text_input(f"{index+1}번 답", key=key, placeholder="정답을 입력하세요")
+            else:
+                answers[index] = st.radio(f"{index+1}번 보기", item["o"], index=None, key=key, label_visibility="collapsed")
+            if index < len(parsed)-1:
+                st.divider()
+        submitted = st.form_submit_button("답안 제출", type="primary", use_container_width=True)
+    if submitted:
+        missing = [str(i+1) for i, value in answers.items() if value is None or not str(value).strip()]
+        if missing:
+            st.warning("아직 답하지 않은 문제: " + ", ".join(missing) + "번. 답을 입력한 뒤 다시 제출해 주세요.")
+        else:
+            score_logic(parsed, q_item, st.session_state.attempt_player, get_kst_time, answers)
+    with st.expander("풀이 그만두기"):
+        st.caption("목록으로 돌아가면 작성 중인 답안이 사라집니다.")
+        st.button("풀이 취소하고 목록으로", on_click=reset_attempt, use_container_width=True)
 
 
-def score_logic(parsed, q_item, player_name, get_kst_time): # get_kst_time 인자 추가
-    review_list, wrongs_results, wrongs_conquest = [], [], []
-    wrongs_full_data = [] # 신규 시트용 데이터 보관함
-    
-    for k, it in enumerate(parsed):
-        u = st.session_state.user_answers.get(f"ans_{k}", "")
-        c = str(it['a']) if it['o'] == ["주관식"] else it['o'][it['a']]
-        is_c = check_subjective_answer(u, it['a']) if it['o'] == ["주관식"] else (str(u) == str(c))
-        
-        if not is_c:
-            wrongs_results.append(it['k']) # 기존 기능용 (ID)
-            wrongs_conquest.append(it['q']) # 기존 기능용 (질문 텍스트)
-            wrongs_full_data.append(it)    # 신규 시트용 (전체 객체)
-            review_list.append({'idx': k+1, 'q': it['q'], 'u': u if u else "미입력", 'c': c, 'e': it['e']})
-    
-    score = round(((len(parsed)-len(review_list))/len(parsed))*100)
-
-    # [수정] 중복 저장 방지 로직 (if문으로 감싸기)
-    if not st.session_state.get('results_saved', False):
-        with st.spinner("성적을 안전하게 저장 중입니다..."):
-            # 1. 결과 저장
-            save_result(
-                q_item['Title'], 
-                player_name, 
-                score, 
-                round(time.time() - st.session_state.start_time), 
-                wrongs_results
-            )
-            
-            # 2. 오답 정복 기능용 저장
-            if wrongs_conquest: 
-                save_wrong_answers(q_item['Title'], player_name, wrongs_conquest)
-                
-            # 3. 상세 로그 저장
-            if wrongs_full_data:
-                save_wrong_answers_detailed(
-                    q_item['Title'], 
-                    q_item.get('Category', '미분류'), 
-                    player_name, 
-                    wrongs_full_data, 
-                    get_kst_time
-                )
-            
-            # [핵심] 저장이 완료되었음을 세션에 기록 (도장 찍기)
-            st.session_state.results_saved = True
-            st.success(" 성적이 기록되었습니다.")
-                
-    st.session_state.quiz_finished, st.session_state.last_score, st.session_state.review_data = True, score, review_list
+def score_logic(parsed, q_item, player_name, get_kst_time, answers=None):
+    if not parsed or st.session_state.quiz_finished:
+        return
+    answers = answers or {}
+    review, wrong_items = [], []
+    for index, item in enumerate(parsed):
+        user_answer = answers.get(index, "")
+        correct = item["a"] if item["o"] == ["주관식"] else item["o"][item["a"]]
+        matched = check_subjective_answer(user_answer, correct) if item["o"] == ["주관식"] else user_answer == correct
+        review.append({"idx": index+1, "q": item["q"], "u": user_answer, "c": correct, "e": item["e"], "correct": matched})
+        if not matched:
+            wrong_items.append(item)
+    score = round(100 * (len(parsed) - len(wrong_items)) / len(parsed))
+    st.session_state.pending_result = {"title": q_item["Title"], "category": q_item.get("Category", "미분류"),
+                                       "player": player_name, "score": score,
+                                       "duration": max(0, round(time.time()-st.session_state.start_time)), "wrongs": wrong_items}
+    st.session_state.review_data = review
+    st.session_state.last_score = score
+    st.session_state.quiz_finished = True
+    persist_attempt(get_kst_time)
     st.rerun()
-    
+
+
+def persist_attempt(get_kst_time):
+    result = st.session_state.pending_result
+    steps = st.session_state.setdefault("save_steps", {})
+    try:
+        if not steps.get("result"):
+            save_result(result["title"], result["player"], result["score"], result["duration"], [], attempt_id=st.session_state.attempt_id)
+            steps["result"] = True
+        if result["wrongs"] and not steps.get("wrongs"):
+            save_wrong_answers(result["title"], result["player"], [q["q"] for q in result["wrongs"]], attempt_id=st.session_state.attempt_id)
+            steps["wrongs"] = True
+        if result["wrongs"] and not steps.get("details"):
+            save_wrong_answers_detailed(result["title"], result["category"], result["player"], result["wrongs"], get_kst_time, attempt_id=st.session_state.attempt_id)
+            steps["details"] = True
+        st.session_state.results_saved = True
+        st.session_state.save_error = ""
+    except Exception:
+        st.session_state.results_saved = False
+        st.session_state.save_error = "기록 저장이 완료되지 않았습니다. 이 화면을 유지하고 연결 상태를 확인한 뒤 다시 시도해 주세요."
+
+
 def render_results():
-    st.success(f"최종 점수: {int(st.session_state.last_score)}점")
-    for rev in st.session_state.review_data:
-        with st.expander(f"Q{rev['idx']}. 오답 확인", expanded=True):
-            st.markdown(f"**문제:** {rev['q']}\n\n**제출:** {rev['u']}\n\n**정답:** {rev['c']}\n\n💡 {rev['e']}")
-    if st.button("목록으로 돌아가기", use_container_width=True):
-        st.session_state.selected_quiz = ""
-        st.rerun()
+    from my_study_app_utils import get_kst_time
+    result = st.session_state.pending_result
+    st.subheader("풀이를 마쳤어요")
+    st.caption(result["title"])
+    c1, c2 = st.columns(2)
+    c1.metric("나의 점수", f"{result['score']}점")
+    c2.metric("정답", f"{len(st.session_state.review_data)-len(result['wrongs'])} / {len(st.session_state.review_data)}")
+    if st.session_state.results_saved:
+        st.success("성적이 저장되었습니다. 아래에서 답과 해설을 확인해 보세요.")
+    else:
+        st.warning(st.session_state.get("save_error", "기록 저장이 필요합니다."))
+        if st.button("저장 다시 시도", type="primary"):
+            persist_attempt(get_kst_time)
+            st.rerun()
+    for row in st.session_state.review_data:
+        with st.expander(f"{row['idx']}번 · {'정답' if row['correct'] else '오답'} · {row['q']}", expanded=not row["correct"]):
+            st.write(f"내 답: {row['u']}")
+            st.write(f"정답: {row['c']}")
+            st.info(row["e"])
+    if not st.session_state.results_saved:
+        st.caption("목록으로 이동하면 저장되지 않은 기록을 잃을 수 있습니다.")
+    st.button("다른 퀴즈 풀기", use_container_width=True, on_click=reset_attempt)

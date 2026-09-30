@@ -1,68 +1,33 @@
 import streamlit as st
 import pandas as pd
 
+
 def show_personal_records(current_player, all_results):
-    st.subheader(" 개인 성적표")
-    st.caption("나의 퀴즈 기록과 점수 분포를 확인하세요.")
-
+    st.subheader("나의 학습 기록")
+    st.caption("풀이 이력과 점수를 한눈에 확인하세요.")
+    if not current_player.strip() and not st.session_state.get("is_admin"):
+        st.info("상단에서 학습자 이름을 입력하면 내 기록을 확인할 수 있습니다.")
+        return
     if not all_results:
-        st.info("아직 기록된 성적이 없습니다. 퀴즈를 먼저 풀어보세요!")
+        st.info("아직 기록된 성적이 없습니다. 첫 퀴즈를 풀어보세요.")
         return
-
-    df = pd.DataFrame(all_results)
-    
-    # [방어 로직] User가 비어있는 행 제외 및 문자열 변환 후 정렬
-    # sorted() 에러를 방지하기 위해 리스트 컴프리헨션 사용
-    all_users = sorted([str(u) for u in df['User'].unique() if u and str(u).strip()])
-    
-    if not all_users:
-        st.warning("유효한 유저 기록이 없습니다.")
+    frame = pd.DataFrame(all_results)
+    if not {"User", "Score", "QuizTitle", "Duration", "Time"}.issubset(frame.columns):
+        st.warning("성적 시트의 열 이름을 확인해 주세요.")
         return
-
-    # 아이디 선택 (로그인 유저를 기본값으로)
-    default_idx = all_users.index(current_player) if current_player in all_users else 0
-    target_user = st.selectbox("기록을 확인할 아이디 선택", all_users, index=default_idx)
-
-    # 해당 유저 데이터만 필터링
-    user_df = df[df['User'] == target_user].copy()
-    
-    # 점수 데이터를 숫자로 변환 (변환 안 되는 건 제외)
-    user_df['Score'] = pd.to_numeric(user_df['Score'], errors='coerce')
-    user_df = user_df.dropna(subset=['Score'])
-
-    # --- 구간별 통계 계산 ---
-    # 1. 100점
-    s100 = len(user_df[user_df['Score'] == 100])
-    # 2. 90점 이상 ~ 100점 미만
-    s90 = len(user_df[(user_df['Score'] >= 90) & (user_df['Score'] < 100)])
-    # 3. 80점 이상 ~ 90점 미만
-    s80 = len(user_df[(user_df['Score'] >= 80) & (user_df['Score'] < 90)])
-    # 4. 80점 미만
-    s_low = len(user_df[user_df['Score'] < 80])
-
-    # 상단 요약 지표 (st.metric 사용)
-    st.write("")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric(" 100점", f"{s100}회")
-    col2.metric(" 90~99점", f"{s90}회")
-    col3.metric(" 80~89점", f"{s80}회")
-    col4.metric(" 기타", f"{s_low}회")
-
-    st.divider()
-
-    # --- 상세 목록 ---
-    st.markdown(f"#### {target_user}님의 상세 풀이 이력")
-    if not user_df.empty:
-        # 최신순 정렬 (Time 기준)
-        display_df = user_df.sort_values(by='Time', ascending=False).reset_index(drop=True)
-        display_df.index = display_df.index + 1  # 1번부터 번호 부여
-        
-        # 테이블 출력
-        st.table(display_df[['QuizTitle', 'Score', 'Duration', 'Time']].rename(columns={
-            'QuizTitle': '퀴즈 제목',
-            'Score': '점수',
-            'Duration': '시간(초)',
-            'Time': '완료일시'
-        }))
-    else:
-        st.write("상세 기록이 존재하지 않습니다.")
+    frame["User"] = frame["User"].astype(str)
+    target = current_player
+    if st.session_state.get("is_admin"):
+        users = sorted(frame["User"].unique())
+        target = st.selectbox("기록을 볼 학습자", users, index=users.index(current_player) if current_player in users else 0)
+    frame = frame[frame["User"] == target].copy()
+    frame["Score"] = pd.to_numeric(frame["Score"], errors="coerce")
+    frame = frame.dropna(subset=["Score"])
+    if frame.empty:
+        st.info(f"{target}님의 풀이 기록이 아직 없습니다.")
+        return
+    c1, c2 = st.columns(2)
+    c1.metric("풀이 횟수", f"{len(frame)}회")
+    c2.metric("평균 점수", f"{frame['Score'].mean():.0f}점")
+    st.caption(f"만점 {sum(frame['Score'] == 100)}회 · 최고 점수 {frame['Score'].max():.0f}점")
+    st.dataframe(frame.sort_values("Time", ascending=False)[["QuizTitle", "Score", "Duration", "Time"]].rename(columns={"QuizTitle":"퀴즈", "Score":"점수", "Duration":"시간(초)", "Time":"완료 시각"}), hide_index=True, use_container_width=True)

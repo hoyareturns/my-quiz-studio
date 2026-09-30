@@ -1,7 +1,7 @@
-streamlit 
-pandas 
-qrcode 
-Pillow 
-gspread
-google-generativeai
+streamlit>=1.37,<2
+pandas>=2.2,<3
+qrcode>=7.4,<9
+Pillow>=10,<12
+gspread>=6.1,<7
 pytz
+requests>=2.32,<3

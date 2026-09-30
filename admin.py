@@ -1,224 +1,141 @@
+import hmac
 import streamlit as st
 import pandas as pd
-from database import (get_all_quizzes, save_setting, save_chat, get_worksheet, 
-                      update_quiz, delete_quiz, reset_all_data)
-from prompts import VIEW_OPTIONS, FEEDBACK_MODES, EXTERNAL_PROMPT_TEMPLATE
-from database import restore_database_from_backup, get_backup_file_list
-from utils import trigger_google_sheet_backup, generate_default_backup_name
-
-def show_admin_sidebar(app_settings, get_kst_time):
-    ADMIN_PASSWORD = "2662"
-    
-    st.subheader("출제 위원실 (관리자)")
-    pw = st.text_input("비밀번호", type="password", label_visibility="collapsed")
-    
-    if pw == ADMIN_PASSWORD:
-        st.session_state.is_admin = True # 관리자 상태 기록  
-        st.success("인증 완료")     
-        
-        # st.divider()
-        with st.expander("데이터 보관 / 복구 / 새시즌"):           
-           
-            # 1. 초기값 세팅 (세션에 없으면 생성)
-            if "backup_name" not in st.session_state:
-                st.session_state.backup_name = generate_default_backup_name()
-
-            # 2. 입력창 (key를 고정하여 값 유지)
-            # 사용자가 내용을 바꾸면 session_state.backup_name도 자동으로 업데이트됩니다.
-            custom_backup_name = st.text_input(
-                "백업 파일 이름", 
-                value=st.session_state.backup_name,
-                key="backup_name" # 세션 상태 변수와 키를 일치시키면 자동 동기화됨
-            )
-            
-            if st.button("지금 즉시 구글 시트 백업 실행", use_container_width=True):
-                if not custom_backup_name.strip():
-                    st.warning("백업 파일 이름을 입력해주세요!")
-                else:
-                    with st.spinner(f"'{custom_backup_name}' 이름으로 백업을 진행 중입니다..."):
-                        # 백업 함수 호출
-                        success, msg = trigger_google_sheet_backup(custom_backup_name)
-                        if success:
-                            st.success(f"'{custom_backup_name}' 백업이 완료되었습니다!")
-                        else:
-                            st.error(f"백업 실패: {msg}")          
-
-            # [복구 기능]
-            from database import restore_database_from_backup, get_backup_file_list
-            
-            backup_files = get_backup_file_list()
-            selected_backup_file = st.selectbox(
-                "복구할 백업 파일을 선택하세요",
-                options=[""] + backup_files,
-                index=0
-            )
-            
-            if st.button("데이터 복구 실행", use_container_width=True):
-                if selected_backup_file == "":
-                    st.warning("복구할 백업 파일을 먼저 선택해 주세요.")
-                else:
-                    with st.spinner(f"'{selected_backup_file}' 파일에서 데이터를 통째로 복사 중입니다..."):
-                        success = restore_database_from_backup(selected_backup_file)
-                        
-                        if success:
-                            st.success(f"'{selected_backup_file}' 파일로 완벽하게 복구되었습니다!")
-                        else:
-                            st.error("데이터 복구 중 문제가 발생했습니다.")
+from database import (get_all_quizzes, get_all_results, save_setting, update_quiz, delete_quiz,
+                      reset_all_data, restore_database_from_backup, get_backup_file_list)
+from prompts import VIEW_OPTIONS
+from utils import trigger_google_sheet_backup, generate_default_backup_name, validate_quiz_text, get_secret
+from my_study_app_utils import get_kst_time
 
 
-            st.divider() 
-            st.warning("이 작업은 모든 기록을 영구 삭제합니다.")            
-            # 새시즌
-            confirm_pw = st.text_input("초기화 확인을 위해 비밀번호를 다시 입력하세요", type="password", key="reset_confirm_pw")
-            
-            if st.button(" 모든 데이터 삭제 및 시즌 초기화 실행", use_container_width=True, type="primary"):
-                if confirm_pw == ADMIN_PASSWORD:
-                    with st.spinner("데이터를 초기화 중입니다..."):
-                        success, msg = reset_all_data()
-                        if success:
-                            # 시즌 시작 로그 기록
-                            save_setting("season_start", get_kst_time())
-                            save_chat("시스템", "새로운 시즌이 시작되었습니다! 모든 데이터가 초기화되었습니다.")
-                            
-                            st.success(msg)
-                            get_all_quizzes.clear() # 캐시 비우기
-                            st.rerun()
-                        else:
-                            st.error(msg)
-                else:
-                    st.error("비밀번호가 일치하지 않습니다.")
+def configured_admin_password():
+    return str(get_secret("ADMIN_PASSWORD", ""))
 
 
-        # st.divider()
-        with st.expander("앱 기본 설정"):         
-            # --------------------------------------
-            # --- [추가] 순위표 노출 인원 설정 구역 ---
-            st.write("---")
-            st.subheader(" 순위표 노출 설정")
-            st.info("순위표 페이지의 '영역별 성취도' 섹션에 표시될 인원수를 설정합니다.")
-            
-            # 1. 현재 설정된 값 불러오기 (기본값 3)
-            # app_settings는 show_admin_sidebar의 인자로 전달받은 값을 활용합니다.
-            current_top_count = int(app_settings.get('top_achievers_count', 3))
-            
-            # 2. 숫자 입력 위젯
-            new_top_count = st.number_input(
-                "우수 성취자 노출 인원 (TOP N)", 
-                min_value=1, 
-                max_value=1000, 
-                value=current_top_count,
-                step=1,
-                help="모든 유저를 보고 싶다면 인원수를 넉넉하게 설정하세요."
-            )
-            
-            # 3. 설정 저장 버튼
-            if st.button("순위 노출 인원 설정 저장", use_container_width=True):
-                # database.py에서 임포트한 save_setting 함수를 사용합니다.
-                success, msg = save_setting("top_achievers_count", str(new_top_count))
-                if success:
-                    st.success(f"설정 완료! 이제 순위표에 TOP {new_top_count}명이 표시됩니다.")
-                    # 즉시 반영을 위해 앱 재실행
-                    st.rerun()
-                else:
-                    st.error(f"설정 저장 실패: {msg}")
+def show_admin_login(location="admin"):
+    if st.session_state.get("is_admin"):
+        st.caption("관리자 인증됨")
+        return True
+    expected = configured_admin_password()
+    if not expected:
+        st.info("관리자 비밀번호 설정이 필요합니다. 배포 설정의 ADMIN_PASSWORD를 등록해 주세요.")
+        return False
+    with st.form(f"admin_login_{location}"):
+        password = st.text_input("관리자 비밀번호", type="password", key=f"admin_password_{location}")
+        login = st.form_submit_button("관리자 인증", use_container_width=True)
+    if login:
+        if hmac.compare_digest(password.encode(), expected.encode()):
+            st.session_state.is_admin = True
+            st.rerun()
+        else:
+            st.error("비밀번호가 일치하지 않습니다.")
+    return False
 
-        
 
-            all_q = get_all_quizzes()
-            custom_cats = [c.strip() for c in app_settings.get("custom_categories", "").split(",") if c.strip()]
-            all_cats = list(dict.fromkeys(custom_cats + [q.get('Category', '미분류') for q in all_q]))
-            
-            st.caption("앱 기본 설정")
-            default_view = st.selectbox("처음 열릴 탭", VIEW_OPTIONS, index=VIEW_OPTIONS.index(app_settings.get('default_view', VIEW_OPTIONS[0])) if app_settings.get('default_view') in VIEW_OPTIONS else 0)
-            if default_view != app_settings.get('default_view'):
-                save_setting("default_view", default_view)
-                st.rerun()
-                
-            default_cat = st.selectbox("처음 열릴 카테고리", all_cats, index=all_cats.index(app_settings.get('default_category', all_cats[0])) if app_settings.get('default_category') in all_cats else 0)
-            if default_cat != app_settings.get('default_category'):
-                save_setting("default_category", default_cat)
-                st.rerun()
-
-            feedback_mode = st.selectbox("피드백 모드", FEEDBACK_MODES, index=FEEDBACK_MODES.index(app_settings.get('feedback_mode', FEEDBACK_MODES[0])) if app_settings.get('feedback_mode') in FEEDBACK_MODES else 0)
-            if feedback_mode != app_settings.get('feedback_mode'):
-                save_setting("feedback_mode", feedback_mode)
-                st.rerun()
-
-        # st.divider()
-        
-        with st.expander("AI 출제 프롬프트 확인 (복사용)"):
-            st.caption("노트북LM 등 외부 AI에서 정밀 출제 시 아래 내용을 복사해서 사용하세요.")
-            # 앱 내부용이 아닌 외부용 프롬프트(주관식 포함)를 노출합니다.
-            st.text_area("프롬프트 양식", EXTERNAL_PROMPT_TEMPLATE, height=300)
-
-        with st.expander("새 퀴즈 배포"):
-
-            cust_cat = st.text_input("신규 카테고리 목록 (쉼표 구분)", app_settings.get("custom_categories", ""))
-            if st.button("신규 카테고리 저장", use_container_width=True):
-                save_setting("custom_categories", cust_cat)
-                st.rerun()
-
-            nc = st.selectbox("그룹 선택", all_cats)
-            nt = st.text_input("제목")
-            nx = st.text_area("AI 텍스트 붙여넣기", height=150)
-            if st.button("배포", use_container_width=True):
-                ws = get_worksheet("Quizzes")
-                if ws and nc and nt and nx:
-                    ws.append_row([nc, nt, nx, get_kst_time()])
-                    get_all_quizzes.clear()
-                    st.success("배포 성공!")
-                    st.rerun()
-
-        with st.expander("퀴즈 수정/삭제"):
-            if all_q:
-                sel_tit = st.selectbox("대상 퀴즈", [q['Title'] for q in all_q])
-                curr_q = next(q for q in all_q if q['Title'] == sel_tit)
-                e_cat = st.selectbox("그룹 변경", all_cats, index=all_cats.index(curr_q['Category']) if curr_q['Category'] in all_cats else 0)
-                e_tit = st.text_input("제목 변경", curr_q['Title'])
-                if st.button("정보 수정", use_container_width=True):
-                    update_quiz(sel_tit, e_cat, e_tit)
-                    st.rerun()
-                if st.button("퀴즈 삭제", use_container_width=True):
-                    if delete_quiz(sel_tit):
-                        st.rerun()
-
-        # --- 수정된 섹션: 최근 접속 및 학습 현황 (사용자 정의 순서) ---
-        # st.divider()
-        with st.expander(" 최근 접속 및 학습 현황", expanded=True):
-            ws_res = get_worksheet("Results")
-            if ws_res:
-                res_data = ws_res.get_all_records()
-                if res_data:
-                    res_df = pd.DataFrame(res_data)
-                    
-                    # 1. 최신 데이터가 위로 오도록 역순 정렬
-                    res_df = res_df.iloc[::-1].head(20)
-                    
-                    # 2. 사용자 요청 순서대로 매칭 정의
-                    # 시트 헤더: User, Quiz Title, Score, Time, Duration
-                    display_map = {
-                        'User': 'ID',
-                        'QuizTitle': '퀴즈명',
-                        'Score': '점수',
-                        'Time': '접속시간',
-                        'Duration': '소요시간'
-                    }
-                    
-                    # 3. [핵심] 보여줄 컬럼의 '순서'를 리스트로 고정합니다.
-                    requested_order = ['User', 'QuizTitle', 'Score', 'Time', 'Duration']
-                    
-                    # 4. 실제 시트에 존재하는 컬럼만 골라내어 위에서 정한 순서를 유지합니다.
-                    existing_cols = [col for col in requested_order if col in res_df.columns]
-                    
-                    if existing_cols:
-                        st.dataframe(
-                            res_df[existing_cols].rename(columns=display_map),
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                    else:
-                        st.warning("시트의 헤더명(User, Quiz Title 등)을 확인해주세요.")
-                else:
-                    st.info("기록된 데이터가 없습니다.")
+def show_admin_page(settings):
+    st.subheader("운영 관리")
+    if not show_admin_login():
+        return
+    if st.button("관리자 로그아웃"):
+        st.session_state.is_admin = False
+        for key in ("admin_password_admin", "admin_password_author"):
+            st.session_state.pop(key, None)
+        st.rerun()
+    section = st.selectbox("관리할 항목", ["퀴즈 수정·삭제", "참여 기록", "화면 설정", "백업·복구", "시즌 초기화"])
+    if section == "퀴즈 수정·삭제":
+        show_quiz_editor()
+    elif section == "참여 기록":
+        rows = get_all_results()
+        if rows:
+            frame = pd.DataFrame(rows).sort_values("Time", ascending=False)
+            st.dataframe(frame.rename(columns={"User":"학습자", "QuizTitle":"퀴즈", "Score":"점수", "Duration":"시간(초)", "Time":"완료 시각"}), hide_index=True, use_container_width=True)
+        else:
+            st.info("아직 참여 기록이 없습니다.")
+    elif section == "화면 설정":
+        with st.form("app_settings"):
+            current = settings.get("default_view", VIEW_OPTIONS[0])
+            view = st.selectbox("처음 열릴 메뉴", VIEW_OPTIONS, index=VIEW_OPTIONS.index(current) if current in VIEW_OPTIONS else 0)
+            category = st.text_input("기본 분류", value=str(settings.get("default_category", "공통 역량")))
+            categories = st.text_input("분류 목록 (쉼표 구분)", value=str(settings.get("custom_categories", "")))
+            try:
+                initial_count = max(1, min(1000, int(settings.get("top_achievers_count", 3))))
+            except (ValueError, TypeError):
+                initial_count = 3
+            count = st.number_input("순위표에 표시할 인원", min_value=1, max_value=1000, value=initial_count)
+            submit = st.form_submit_button("설정 저장", type="primary", use_container_width=True)
+        if submit:
+            results = [save_setting(k, v) for k, v in {"default_view":view, "default_category":category.strip(), "custom_categories":categories.strip(), "top_achievers_count":str(count)}.items()]
+            if all(ok for ok, _ in results):
+                st.success("설정을 저장했습니다.")
             else:
-                st.error("Results 시트를 찾을 수 없습니다.")    
+                st.error("일부 설정을 저장하지 못했습니다. 연결 상태를 확인해 주세요.")
+    elif section == "백업·복구":
+        name = st.text_input("백업 이름", value=generate_default_backup_name())
+        if st.button("백업 만들기", use_container_width=True):
+            ok, message = trigger_google_sheet_backup(name.strip())
+            (st.success if ok else st.error)(message)
+            if ok:
+                get_backup_file_list.clear()
+        st.divider()
+        st.caption("백업 목록은 이 버튼을 누를 때만 불러옵니다.")
+        if st.button("복구할 백업 목록 불러오기"):
+            try:
+                st.session_state.backup_choices = get_backup_file_list()
+            except Exception:
+                st.error("백업 목록을 불러오지 못했습니다.")
+        if st.session_state.get("backup_choices"):
+            selected = st.selectbox("백업 파일", st.session_state.backup_choices)
+            confirmed = st.checkbox("선택한 백업으로 현재 데이터를 덮어쓰는 것을 확인했습니다.")
+            if st.button("선택한 백업 복구", disabled=not confirmed):
+                if restore_database_from_backup(selected):
+                    st.success("데이터를 복구했습니다.")
+    else:
+        st.warning("퀴즈·성적·오답 기록이 삭제됩니다. 먼저 백업해 주세요.")
+        with st.form("reset_season"):
+            password = st.text_input("관리자 비밀번호 재입력", type="password")
+            confirmed = st.checkbox("데이터 삭제와 새 시즌 시작을 확인했습니다.")
+            submitted = st.form_submit_button("데이터 삭제 및 새 시즌 시작")
+        if submitted:
+            if not confirmed or not hmac.compare_digest(password.encode(), configured_admin_password().encode()):
+                st.error("비밀번호와 확인 항목을 확인해 주세요.")
+            else:
+                ok, msg = reset_all_data()
+                if ok:
+                    saved, _ = save_setting("season_start", get_kst_time())
+                    (st.success if saved else st.warning)(msg if saved else "데이터는 초기화했지만 시즌 시작 시각은 저장하지 못했습니다.")
+                else:
+                    st.error(msg)
+
+
+def show_quiz_editor():
+    quizzes = get_all_quizzes()
+    if not quizzes:
+        st.info("등록된 퀴즈가 없습니다. 문제 등록 메뉴에서 첫 퀴즈를 만들어 보세요.")
+        return
+    index = st.selectbox("수정할 퀴즈", range(len(quizzes)), format_func=lambda i: quizzes[i]["Title"])
+    quiz = quizzes[index]
+    st.caption("기록과 연결된 제목은 유지됩니다. 분류·문제·정답·해설을 수정할 수 있습니다.")
+    with st.form(f"edit_quiz_{index}_{quiz['Title']}"):
+        category = st.text_input("분류", value=quiz["Category"])
+        content = st.text_area("문제 전체 내용", value=quiz["Content"], height=350)
+        submitted = st.form_submit_button("검사 후 수정 저장", type="primary", use_container_width=True)
+    if submitted:
+        questions, errors = validate_quiz_text(content)
+        if not category.strip():
+            errors.append("분류를 입력해 주세요.")
+        if errors:
+            for error in errors:
+                st.error(error)
+        else:
+            try:
+                if update_quiz(quiz["Title"], category.strip(), quiz["Title"], content):
+                    st.success(f"{len(questions)}문제를 수정했습니다.")
+                else:
+                    st.error("수정할 퀴즈를 찾지 못했습니다. 새로고침 후 다시 시도해 주세요.")
+            except Exception:
+                st.error("저장하지 못했습니다. 연결 상태를 확인해 주세요.")
+    with st.expander("퀴즈 삭제"):
+        confirmed = st.checkbox("이 퀴즈를 삭제하겠습니다.", key=f"delete_confirm_{quiz['Title']}")
+        if st.button("퀴즈 삭제", disabled=not confirmed):
+            if delete_quiz(quiz["Title"]):
+                st.rerun()

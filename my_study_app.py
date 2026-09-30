@@ -1,18 +1,10 @@
 import streamlit as st
-import re
-import time
-import random
-
-# 1. 공통 데이터 및 유틸리티 관련
-from database import get_all_quizzes, get_all_results, get_settings, get_chats, save_quiz, get_unique_players
-from utils import robust_parse, generate_quiz_with_ai, trigger_google_sheet_backup, natural_sort_key 
-from prompts import APP_TITLE, TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, TAB_PARTICIPATION
-from my_study_app_utils import get_kst_time, generate_qr_code, apply_custom_style
-
-# 2. 관리자 화면 관련
-from admin import show_admin_sidebar
-
-# 3. 페이지 로직 관련
+from database import get_all_quizzes, get_all_results, get_settings, get_unique_players, get_gspread_client, clear_data_cache
+from utils import robust_parse, natural_sort_key
+from prompts import APP_TITLE, TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, TAB_PARTICIPATION, TAB_AUTHOR
+from my_study_app_utils import get_kst_time, apply_custom_style
+from admin import show_admin_page
+from author_page import show_author_page
 from quiz_page import show_quiz_area
 from leaderboard_page import show_season_leaderboard
 from chat_page import show_chat_room
@@ -20,117 +12,78 @@ from wrong_answer_logic import show_wrong_answer_conquest
 from personal_record_logic import show_personal_records
 from participation_page import show_participation_status
 
+
 def main():
-    st.set_page_config(
-        page_title=APP_TITLE, 
-        page_icon="logo.png",
-        layout="centered"
-    )
-
+    st.set_page_config(page_title=APP_TITLE, page_icon="logo.png", layout="centered", initial_sidebar_state="collapsed")
     apply_custom_style()
-    
-    # CSS 설정 (꼬이게 만들던 레이아웃 꼼수 제거, 깔끔한 기본 스타일 유지)
-    st.markdown("""
-        <style>
-        header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; pointer-events: none !important; }
-        .main .block-container { padding-top: 5rem !important; }
-        .title-text { font-size: 2.2rem; font-weight: 800; color: #ff4b4b; line-height: 1.2; }
-        /* 라디오 버튼 간격 살짝 넓히기 (가독성 향상) */
-        div[role="radiogroup"] > label { margin-bottom: 15px !important;  }
-        div[role="radiogroup"] > label:last-child { margin-bottom: 0px !important; }  
-        </style>
-    """, unsafe_allow_html=True)
+    st.session_state.setdefault("player_name", "")
+    st.session_state.setdefault("is_admin", False)
+    st.session_state.setdefault("selected_quiz", "")
+    st.session_state.setdefault("quiz_finished", False)
+    st.session_state.setdefault("start_time", None)
+    st.session_state.setdefault("user_answers", {})
+    st.session_state.setdefault("results_saved", False)
+    st.session_state.setdefault("review_data", [])
+    active = st.session_state.start_time is not None and not st.session_state.quiz_finished
+    settings = get_settings()
+    options = [TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_AUTHOR, TAB_RANK, TAB_PARTICIPATION, TAB_CHAT, "관리"]
+    if "main_menu" not in st.session_state:
+        preferred = settings.get("default_view", TAB_QUIZ)
+        st.session_state.main_menu = preferred if preferred in options else TAB_QUIZ
 
-    app_settings = get_settings()
+    st.markdown('<div class="app-heading"><span class="eyebrow">매일 조금씩, 더 단단한 실력</span><h1>스마트 평가 센터</h1><p>풀어 보고, 돌아보고, 다음 단계로.</p></div>', unsafe_allow_html=True)
+    with st.expander("학습자 이름 · 내 계정", expanded=not bool(st.session_state.player_name) and st.session_state.main_menu == TAB_QUIZ):
+        st.text_input("학습자 이름", key="player_name", placeholder="기록에 사용할 이름을 입력하세요", disabled=active)
+        st.caption("이름은 성적과 오답을 구분하는 용도입니다. 본인 인증용 로그인은 아닙니다.")
+        if not active and st.checkbox("기존 학습자 목록에서 선택", key="show_existing_users"):
+            users = sorted(get_unique_players(), key=natural_sort_key)
+            def select_user():
+                if st.session_state.existing_user:
+                    st.session_state.player_name = st.session_state.existing_user
+            st.selectbox("기존 학습자", [""] + users, key="existing_user", on_change=select_user)
+    if st.session_state.player_name:
+        st.caption(f"현재 학습자: {st.session_state.player_name}" + (" · 풀이 중에는 이름과 메뉴가 고정됩니다." if active else ""))
 
-    # 사이드바 (관리자 설정)
+    st.radio("메뉴", options, key="main_menu", horizontal=True, label_visibility="collapsed", disabled=active)
+    st.divider()
     with st.sidebar:
-        show_admin_sidebar(app_settings, get_kst_time)
-        st.divider()
-        app_url = "https://hoya-quiz-studio.streamlit.app/" 
-        qr_img = generate_qr_code(app_url)
-        st.image(qr_img, width=150)
+        st.subheader("도움말")
+        st.write("문제 등록 메뉴에서 요청문을 복사한 뒤, GPT의 답변을 붙여넣어 퀴즈를 만들 수 있습니다.")
+        st.caption("앱은 생성형 AI API를 호출하지 않습니다. 외부 GPT 서비스는 사용 중인 계정의 요금제를 따릅니다.")
+        if st.button("최신 데이터 불러오기", use_container_width=True, disabled=active):
+            clear_data_cache()
+            st.rerun()
+        st.caption("다른 사용자의 변경 사항은 잠시 후 반영됩니다. 바로 확인하려면 새로고침해 주세요.")
+    if get_gspread_client() is None:
+        st.info("Google Sheets 연결 설정이 필요합니다. 문제 등록 메뉴의 요청문 작성과 미리보기는 먼저 사용할 수 있습니다.")
 
-    # 상단 타이틀 및 유저 선택
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.markdown(f'<p class="title-text">{APP_TITLE}</p>', unsafe_allow_html=True)
-    with c2:
-        if "cached_user_list" not in st.session_state:
-            raw_users = get_unique_players() 
-            st.session_state.cached_user_list = sorted(raw_users, key=natural_sort_key)
-
-        def on_user_dropdown_change():
-            selected = st.session_state.user_dropdown_selection
-            if selected != "--- 기존 유저 선택 ---":
-                st.session_state.player_name = selected
-
-        st.text_input("아이디", key="player_name", placeholder="이름을 입력하세요")
-        st.selectbox(
-            "기존 유저 목록",
-            ["--- 기존 유저 선택 ---"] + st.session_state.cached_user_list,
-            key="user_dropdown_selection",
-            on_change=on_user_dropdown_change,
-            label_visibility="collapsed"
-        )
-
-    st.write("---")
-
-    # [핵심 수정 1] 초기값 설정
-    if 'main_menu' not in st.session_state:
-        st.session_state.main_menu = TAB_QUIZ
-
-    menu_options = [TAB_QUIZ, TAB_REVIEW, TAB_RECORDS, TAB_RANK, TAB_CHAT, TAB_PARTICIPATION]
-
-    # [핵심 수정 2] 라디오 버튼 렌더링 (더블클릭 버그 해결 & 세로 배치)
-    # key="main_menu"를 사용하면 라디오 버튼을 누르는 즉시 session_state.main_menu 값이 변경됨
-    st.radio(
-        "메뉴를 선택하세요",
-        options=menu_options,
-        key="main_menu",             # 이 속성이 더블 클릭 버그를 완벽히 해결합니다.
-        label_visibility="collapsed" # 라벨 숨김
-        # horizontal=True 를 삭제하여 자연스러운 세로 1줄 배치로 복구
-    )
-    
-    # 렌더링 이후 선택된 값을 가져옴
-    view_mode = st.session_state.main_menu
-
-    st.write("---")
-    
-    # 데이터 로드
-    all_quizzes = get_all_quizzes()
-    season_start = app_settings.get('season_start', '2000-01-01 00:00:00')
-
-    all_data = get_all_results()
-    season_res = []
-
-    # season_start가 없는 경우 대비
-    if not season_start:
-        season_start = '2000-01-01 00:00:00'
-        
-    season_res = all_data
-
-    # 세션 상태 초기화
-    for k in ['selected_quiz', 'user_answers', 'quiz_finished', 'start_time', 'review_data', 'answered_list', 'quiz_jump', 'results_saved']:
-        if k not in st.session_state: 
-            st.session_state[k] = "" if k == 'selected_quiz' else [] if k in ['review_data', 'answered_list'] else {} if k == 'user_answers' else False if k in ['quiz_finished', 'quiz_jump', 'results_saved'] else None
-
-    # 선택된 메뉴(라디오 버튼 상태)에 따른 화면 출력
-    if view_mode == TAB_RANK:
-        safe_season_start = str(season_start) if season_start else '2000-01-01 00:00:00'
-        show_season_leaderboard(season_res, safe_season_start, app_settings)
-    elif view_mode == TAB_REVIEW:
-        show_wrong_answer_conquest(st.session_state.player_name, all_quizzes, robust_parse)
-    elif view_mode == TAB_CHAT:
+    view = st.session_state.main_menu
+    if view == TAB_AUTHOR:
+        show_author_page(settings)
+    elif view == "관리":
+        show_admin_page(settings)
+    elif view == TAB_QUIZ:
+        quizzes = [st.session_state.quiz_snapshot] if active and st.session_state.get("quiz_snapshot") else get_all_quizzes()
+        show_quiz_area(quizzes, None, settings, st.session_state.player_name, robust_parse, get_kst_time)
+    elif view == TAB_REVIEW:
+        if not st.session_state.player_name.strip():
+            st.info("상단에서 학습자 이름을 입력해 주세요.")
+        else:
+            show_wrong_answer_conquest(st.session_state.player_name, get_all_quizzes(), robust_parse)
+    elif view == TAB_RECORDS:
+        show_personal_records(st.session_state.player_name, get_all_results())
+    elif view == TAB_RANK:
+        show_season_leaderboard(get_all_results(), settings.get("season_start") or "2000-01-01", settings)
+    elif view == TAB_PARTICIPATION:
+        show_participation_status(get_all_results(), get_all_quizzes())
+    elif view == TAB_CHAT:
         show_chat_room(st.session_state.player_name)
-    elif view_mode == TAB_RECORDS:
-        show_personal_records(st.session_state.player_name, season_res)
-    elif view_mode == TAB_QUIZ:
-        show_quiz_area(all_quizzes, season_res, app_settings, st.session_state.player_name, robust_parse, get_kst_time)
-    elif view_mode == TAB_PARTICIPATION:
-        show_participation_status(season_res, all_quizzes)
+
 
 if __name__ == "__main__":
-    if "player_name" not in st.session_state:
-        st.session_state.player_name = f"Guest_{random.randint(1000,9999)}"
-    main()
+    try:
+        main()
+    except Exception:
+        st.error("화면을 불러오지 못했습니다. 잠시 후 다시 시도하거나 Google Sheets 연결 설정을 확인해 주세요.")
+        import logging
+        logging.getLogger(__name__).exception("App request failed")

@@ -1,9 +1,14 @@
 import re
 import streamlit as st
-import google.generativeai as genai
 import requests
 import pytz
 from datetime import datetime
+
+
+def get_secret(name, default=None):
+    if not st.secrets.load_if_toml_exists():
+        return default
+    return st.secrets.get(name, default)
 
 
 def natural_sort_key(s):
@@ -22,185 +27,81 @@ def clean_text(text):
     return text
 
 def check_subjective_answer(user_ans, correct_ans_raw):
-    """
-    주관식 정답을 비교합니다.
-    1차: 코드 기반 정규화 비교 (비용 없음)
-    2차: AI를 통한 문맥 및 동의어 비교 (유연한 채점)
-    """
-    if not user_ans: return False
-    
-    # --- [1단계] 코드 기반 1차 검사 (기존 로직 유지) ---
-    def normalize(text):
-        t = str(text)
-        t = re.sub(r'[\[\]\(\)]', '', t)
-        t = t.replace(" ", "").lower()
-        # 엑셀 특유의 0/1 처리
-        if t == "0": return "false"
-        if t == "1": return "true"
-        return t
+    """Deterministic local grading. Separate accepted alternatives with |."""
+    import unicodedata
 
-    user_clean = normalize(user_ans)
-    if not user_clean: return False
+    def normalize(value):
+        text = re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(value))).casefold()
+        return {"참": "true", "거짓": "false", "1": "true", "0": "false"}.get(text, text)
 
-    c_raw = str(correct_ans_raw)
-    raw_parts = re.split(r'[\(\)/,\[\]]', c_raw)
-    
-    candidates = [c_raw] 
-    for p in raw_parts:
-        p_strip = p.strip()
-        if p_strip:
-            candidates.append(p_strip)
-            
-    # 코드 기반으로 일치하면 바로 True 반환
-    for cand in candidates:
-        if user_clean == normalize(cand):
-            return True
+    if user_ans is None or not str(user_ans).strip():
+        return False
+    raw = str(correct_ans_raw).strip()
+    candidates = [part.strip() for part in raw.split("|") if part.strip()]
+    # Preserve old word aliases, but never split fractions or function arguments.
+    if "|" not in raw and re.fullmatch(r"[A-Za-z가-힣 ]+(?:/[A-Za-z가-힣 ]+)+", raw):
+        candidates.extend(raw.split("/"))
+    return any(normalize(user_ans) == normalize(answer) for answer in candidates)
 
-    # --- [2단계] AI 기반 2차 검사 (1차에서 오답인 경우만 실행) ---
-    # API 키는 보안상 st.secrets에서 가져오거나 관리자 설정에서 가져온다고 가정합니다.
-    api_key = st.secrets.get("GEMINI_API_KEY") # 혹은 app_settings에서 전달받도록 수정 가능
-    if not api_key:
-        return False # API 키가 없으면 AI 채점 건너뜀
 
-    try:
-        genai.configure(api_key=api_key)
-        
-        # 제공해주신 모델 리스트 참조
-        models_to_try = [
-            'gemini-2.5-flash-lite', 
-            'gemini-2.5-flash', 
-            'gemini-3.1-pro-preview'
-        ]
-        
-        # AI 채점용 프롬프트
-        ai_prompt = f"""
-        너는 아주 엄격한 엑셀 및 데이터 처리 전문 채점관이야. 
-        아래 두 답변이 논리적, 문맥적으로 완벽히 동일한지 판단하여 채점해줘.
+def validate_quiz_text(text):
+    """Parse pasted Q/O/A/K/E text and report every malformed question."""
+    text = re.sub(r"(?m)^\s*```[^\n]*$", "", str(text or "")).strip()
+    markers = list(re.finditer(r"\[Q\s*\d*\]", text, re.I))
+    if not markers:
+        return [], ["[Q1]로 시작하는 문제를 찾지 못했습니다. 요청문의 형식을 확인해 주세요."]
+    parsed, errors = [], []
+    for index, marker in enumerate(markers):
+        chunk = text[marker.end():markers[index + 1].start() if index + 1 < len(markers) else len(text)]
+        fields = {}
+        tags = list(re.finditer(r"\[(O|A|K|E)\]", chunk, re.I))
+        question = chunk[:tags[0].start()].strip() if tags else chunk.strip()
+        for i, tag in enumerate(tags):
+            fields[tag.group(1).upper()] = chunk[tag.end():tags[i + 1].start() if i + 1 < len(tags) else len(chunk)].strip()
+        problem = None
+        if not question or not fields.get("O") or not fields.get("A"):
+            problem = "질문, [O] 보기, [A] 정답이 모두 필요합니다."
+        passage = re.search(r"<지문>(.*?)</지문>", question, re.S)
+        question_text = clean_text(re.sub(r"<지문>.*?</지문>", "", question, flags=re.S))
+        options, answer = [], None
+        if not problem and "주관식" in fields["O"]:
+            options, answer = ["주관식"], clean_text(fields["A"])
+        elif not problem:
+            raw_options = fields["O"]
+            symbols = list(re.finditer(r"[①-⑤]", raw_options))
+            if symbols:
+                numbers = ["①②③④⑤".index(match.group()) + 1 for match in symbols]
+                options = [clean_text(raw_options[m.end():symbols[i+1].start() if i+1 < len(symbols) else len(raw_options)]) for i, m in enumerate(symbols)]
+            else:
+                symbols = list(re.finditer(r"(?:^|\n)\s*([1-5])[.)]\s*", raw_options))
+                numbers = [int(m.group(1)) for m in symbols]
+                options = [clean_text(raw_options[m.end():symbols[i+1].start() if i+1 < len(symbols) else len(raw_options)]) for i, m in enumerate(symbols)]
+            raw_answer = clean_text(fields["A"])
+            match = re.fullmatch(r"([①-⑤1-5])(?:번)?(?:[.)])?(?:\s+.*)?", raw_answer)
+            if match:
+                token = match.group(1)
+                number = "①②③④⑤".index(token) + 1 if token in "①②③④⑤" else int(token)
+                answer = numbers.index(number) if number in numbers else None
+            elif raw_answer in options:
+                answer = options.index(raw_answer)
+            if len(options) < 2 or not all(options) or numbers != list(range(1, len(options)+1)):
+                problem = "객관식 보기는 ①부터 순서대로 2~5개 입력해 주세요."
+            elif answer is None:
+                problem = "정답 번호가 보기와 일치하지 않습니다."
+        if not question_text:
+            problem = "지문 외에 질문을 입력해 주세요."
+        if problem:
+            errors.append(f"{index + 1}번 문제: {problem}")
+            continue
+        parsed.append({"p": clean_text(passage.group(1)) if passage else "", "q": question_text,
+                       "o": options, "a": answer, "k": clean_text(fields.get("K", "")),
+                       "e": clean_text(fields.get("E", "제공된 해설이 없습니다."))})
+    return parsed, errors
 
-        [채점 기준]
-        1. 논리적 동의어: 0과 FALSE, 1과 TRUE, '참'과 TRUE 등 엑셀 논리값 동의어는 '정답' 인정.
-        2. 허용 범위: 대소문자 구분 없음, 단어 사이나 양 끝의 공백 차이는 '정답' 인정.
-        3. 철자 엄격 제한 (중요): 의미가 통하더라도 철자 오타(Typos)가 단 하나라도 있으면 무조건 '오답'.
-        - 예: VLOOKUP을 VLOOKP로 쓴 경우 -> 오답
-        - 예: INDEX를 INDX로 쓴 경우 -> 오답
-        - 예: 호랑이를 호랭이로 쓴 경우 -> 오답
-        4. 수식/함수/명사: 함수명이나 인자의 철자가 틀리면 문맥이 같아도 무조건 '오답'.
-
-        - 기준 정답: {correct_ans_raw}
-        - 사용자의 답변: {user_ans}
-
-        결과를 출력할 때는 다른 부연 설명 없이 반드시 '정답' 또는 '오답' 중 하나만 출력해.
-        """
-
-        for model_name in models_to_try:
-            try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(ai_prompt)
-                
-                if response.text and "정답" in response.text:
-                    return True
-                elif response.text and "오답" in response.text:
-                    return False
-                
-            except:
-                continue # 다음 모델로 재시도
-                
-    except Exception:
-        pass # AI 호출 실패 시 최종 오답 처리
-
-    return False
 
 def robust_parse(text):
-    if not text: return []
-    
-    first_q_pos = text.find("[Q")
-    if first_q_pos != -1:
-        text = text[first_q_pos:]
-    
-    parsed = []
-    chunks = re.split(r"\[Q\d*\]|\[Q\]", text)
-    
-    for chunk in chunks:
-        if not chunk.strip(): continue
-        try:
-            q_match = re.search(r'(.*?)(?=\[O\])', chunk, re.S)
-            o_match = re.search(r'\[O\](.*?)(?=\[A\])', chunk, re.S)
-            a_match = re.search(r'\[A\](.*?)(?=\[K\]|\[E\]|$)', chunk, re.S)
-            k_match = re.search(r'\[K\](.*?)(?=\[E\]|$)', chunk, re.S)
-            e_match = re.search(r'\[E\](.*)', chunk, re.S)
-            
-            if not (q_match and o_match and a_match):
-                continue
-                
-            q_raw = q_match.group(1)
-            o_raw = o_match.group(1).strip()
-            a_raw = a_match.group(1).strip()
-            k_raw = k_match.group(1).strip() if k_match else ""
-            e_raw = e_match.group(1).strip() if e_match else "제공된 해설이 없습니다."
-            
-            passage = ""
-            question_text = q_raw
-            passage_match = re.search(r'<지문>(.*?)</지문>', q_raw, re.S)
-            if passage_match:
-                passage = clean_text(passage_match.group(1))
-                question_text = re.sub(r'<지문>.*?</지문>', '', q_raw, flags=re.S)
-            
-            question_text = clean_text(question_text)
-            
-            if "주관식" in o_raw:
-                opts = ["주관식"]
-                ans = clean_text(a_raw)
-            else:
-                opts = re.findall(r'[①-⑤]\s*[^①-⑤]+', o_raw)
-                opts = [re.sub(r'[①-⑤]\s*', '', opt).strip() for opt in opts]
-                
-                ans = -1
-                ans_symbols = ['①', '②', '③', '④', '⑤', '1', '2', '3', '4', '5']
-                for idx, sym in enumerate(ans_symbols):
-                    if sym in a_raw:
-                        ans = idx % 5
-                        break
-            
-            parsed.append({
-                "p": passage,
-                "q": question_text,
-                "o": opts,
-                "a": ans,
-                "k": clean_text(k_raw),
-                "e": clean_text(e_raw)
-            })
-        except:
-            continue
-            
-    return parsed
+    return validate_quiz_text(text)[0]
 
-def generate_quiz_with_ai(q_topic):
-    api_key = st.secrets.get("GEMINI_API_KEY")
-    genai.configure(api_key=api_key)
-    from prompts import QUIZ_GENERATION_PROMPT
-    full_prompt = f"{QUIZ_GENERATION_PROMPT}\n\n주제: [{q_topic}]"
-    
-    models_to_try = [
-        'gemini-2.5-flash-lite',
-        'gemini-2.5-flash',
-        'gemini-3.1-pro-preview'    ]
-    
-    last_error = None
-    
-    for model_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(full_prompt)
-            
-            if response.text:
-                return response.text 
-                
-        except Exception as e:
-            last_error = str(e)
-            continue
-            
-    raise Exception(f"모든 AI 모델 호출 실패. 마지막 에러: {last_error}")
-   
 
 def generate_default_backup_name():
     """현재 시간을 기준으로 기본 백업 파일명을 생성합니다."""
@@ -210,14 +111,14 @@ def generate_default_backup_name():
 
 
 def trigger_google_sheet_backup(custom_name):
-    backup_url = st.secrets.get("GS_BACKUP_URL")
+    backup_url = get_secret("GS_BACKUP_URL")
     
     if not backup_url:
         return False, "백업 URL이 설정되지 않았습니다."
 
     try:
         # [핵심] 여기서 받은 custom_name을 GAS로 넘김
-        response = requests.get(f"{backup_url}?name={custom_name}")
+        response = requests.get(backup_url, params={"name": custom_name}, timeout=30)
         
         if response.status_code == 200:
             return True, "백업 성공"
