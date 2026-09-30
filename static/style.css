@@ -18,6 +18,30 @@
   background: var(--bg);
   font-synthesis: none;
 }
+.participation-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.participation-checks label {
+  min-height: 44px;
+  margin: 0;
+  cursor: pointer;
+}
+.participation-checks input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+.participation-filters > label {
+  max-width: 400px;
+}
+#confirm-dialog .actions {
+  align-items: stretch;
+}
+#confirm-dialog .actions button {
+  flex: 1 1 150px;
+}
 * {
   box-sizing: border-box;
 }

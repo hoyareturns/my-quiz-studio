@@ -197,7 +197,10 @@ function empty(title, description, action = "") {
 function notice(message, type = "") {
   return `<div class="notice ${type}" role="status">${esc(message)}</div>`;
 }
-function confirmAction(message) {
+function confirmAction(message, options = {}) {
+  $("#confirm-title").textContent = options.title || "확인해 주세요";
+  $("#confirm-no").textContent = options.cancel || "취소";
+  $("#confirm-yes").textContent = options.confirm || "계속";
   $("#confirm-message").textContent = message;
   $("#confirm-dialog").showModal();
   return new Promise((resolve) => (confirmResolve = resolve));
@@ -539,16 +542,35 @@ function renderQuestion() {
       go(state.question + 1);
       return;
     }
-    const missing = state.answers.findIndex((v) => !v.trim());
-    if (missing >= 0) {
-      go(missing);
-      toast(`${missing + 1}번 문제에 답을 입력해 주세요.`);
-      return;
+    const missing = state.answers.flatMap((value, index) =>
+      value.trim() ? [] : [index],
+    );
+    if (missing.length) {
+      const numbers = missing
+        .slice(0, 10)
+        .map((index) => index + 1)
+        .join(", ");
+      const proceed = await confirmAction(
+        `아직 답하지 않은 문제가 ${missing.length}개 있어요. (${numbers}${missing.length > 10 ? " 외" : ""}번) 그대로 제출하면 미응답은 모두 오답 처리되고 점수와 오답 노트에 반영됩니다.`,
+        {
+          title: "미응답 문제가 있어요",
+          cancel: "돌아가서 문제 풀기",
+          confirm: "미응답을 오답 처리하고 제출",
+        },
+      );
+      if (state.attempt?.attempt_id !== a.attempt_id) return;
+      if (!proceed) {
+        go(missing[0]);
+        return;
+      }
     }
     await busy(e.target, async () => {
       const result = await api(`/attempts/${a.attempt_id}/submit`, {
         method: "POST",
-        body: { answers: [...state.answers] },
+        body: {
+          answers: [...state.answers],
+          allow_unanswered: missing.length > 0,
+        },
       });
       if (state.attempt?.attempt_id !== a.attempt_id) return;
       state.result = result;
@@ -856,20 +878,60 @@ async function renderLeaderboard(rev) {
   draw();
 }
 async function renderParticipation(rev) {
-  const data = await api("/participation");
+  const filters = (state.participationFilters ||= {
+    category: "",
+    exclude_guest: true,
+    hide_empty: true,
+    only_participants: true,
+  });
+  const initial = await api(`/participation?${new URLSearchParams(filters)}`);
   if (rev !== state.revision) return;
   main.innerHTML =
     heading(
       "LEARNING TOGETHER",
       "함께하는 학습 현황",
-      "완료한 학습 세트를 한눈에 확인하세요.",
+      "선택한 퀴즈 그룹에서 실제로 풀이를 제출한 사람을 확인하세요.",
     ) +
-    (!data.rows.length
-      ? empty(
-          "아직 참여 기록이 없어요",
-          "문제를 풀고 제출하면 참여 현황에 표시됩니다.",
-        )
-      : `<section class="panel"><p class="field-hint">가로로 밀어서 다른 학습 세트도 확인할 수 있어요.</p><div class="table-wrap" tabindex="0" role="region" aria-label="학습 참여 현황"><table><thead><tr><th>학습자</th>${data.quizzes.map((q) => `<th>${esc(q)}</th>`).join("")}</tr></thead><tbody>${data.rows.map((r) => `<tr><th>${esc(r.user)}</th>${data.quizzes.map((q) => `<td>${r.completed.includes(q) ? `<span class="badge">${state.admin && r.scores?.[q] !== undefined ? `${esc(r.scores[q])}점` : "완료"}</span>` : "—"}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`);
+    `<section class="panel participation-filters" aria-label="참여 현황 필터">
+      <label>퀴즈 그룹 선택<select id="participation-category"><option value="">전체 퀴즈</option>${initial.categories.map((category) => `<option value="${esc(category)}" ${filters.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></label>
+      <div class="participation-checks">
+        <label class="inline-label"><input type="checkbox" id="participation-guest" ${filters.exclude_guest ? "checked" : ""}>Guest 제외</label>
+        <label class="inline-label"><input type="checkbox" id="participation-empty" ${filters.hide_empty ? "checked" : ""}>모두 미참여인 퀴즈 제외</label>
+        <label class="inline-label"><input type="checkbox" id="participation-users" ${filters.only_participants ? "checked" : ""}>참여자만 표시</label>
+      </div><p class="field-hint">‘참여자만 표시’를 끄면 등록만 했거나 선택한 그룹을 아직 풀지 않은 사람도 볼 수 있어요. 0점 제출도 참여로 인정하며, 이름에 test가 포함된 기록은 항상 제외합니다.</p>
+    </section><div id="participation-results" aria-live="polite"></div>`;
+  const draw = (data) => {
+    const target = $("#participation-results");
+    if (!target) return;
+    target.innerHTML =
+      !data.rows.length || !data.quizzes.length
+        ? empty(
+            "선택한 조건에 맞는 참여 기록이 없어요",
+            "위의 퀴즈 그룹이나 표시 조건을 바꿔 보세요.",
+          )
+        : `<section class="panel"><p class="field-hint">${data.rows.length}명 · ${data.quizzes.length}개 퀴즈 · 가로로 밀어서 다른 학습 세트도 확인할 수 있어요.</p><div class="table-wrap" tabindex="0" role="region" aria-label="학습 참여 현황"><table><thead><tr><th>학습자</th>${data.quizzes.map((q) => `<th>${esc(q)}</th>`).join("")}</tr></thead><tbody>${data.rows.map((r) => `<tr><th>${esc(r.user)}</th>${data.quizzes.map((q) => `<td>${r.completed.includes(q) ? `<span class="badge">${state.admin && r.scores?.[q] !== undefined ? `${esc(r.scores[q])}점` : "완료"}</span>` : "—"}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`;
+  };
+  let requestId = 0;
+  const refresh = async () => {
+    const current = ++requestId;
+    filters.category = $("#participation-category").value;
+    filters.exclude_guest = $("#participation-guest").checked;
+    filters.hide_empty = $("#participation-empty").checked;
+    filters.only_participants = $("#participation-users").checked;
+    $("#participation-results").innerHTML =
+      '<div class="loading" role="status"><span class="spinner"></span>표시 조건을 적용하고 있어요.</div>';
+    try {
+      const data = await api(`/participation?${new URLSearchParams(filters)}`);
+      if (rev === state.revision && current === requestId) draw(data);
+    } catch (error) {
+      if (rev === state.revision && current === requestId)
+        $("#participation-results").innerHTML = notice(error.message, "error");
+    }
+  };
+  ["category", "guest", "empty", "users"].forEach((key) =>
+    on(`#participation-${key}`, "change", refresh),
+  );
+  draw(initial);
 }
 async function renderWrongs(rev) {
   if (!state.user) {

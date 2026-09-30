@@ -113,6 +113,64 @@ class ApiTests(unittest.TestCase):
         self.client.post(f'/api/attempts/{aid}/submit', json={'answers': ['둘', '서울']})
         self.assertEqual(len(self.store.attempts), 1)
 
+    def test_explicit_blank_submission_grades_blanks_wrong_and_retry_is_stable(self):
+        aid = self.attempt().json()['attempt_id']
+        self.store.fail_save = True
+        first = self.client.post(f'/api/attempts/{aid}/submit', json={
+            'answers': ['', '서울'], 'allow_unanswered': True})
+        self.assertEqual(first.status_code, 200)
+        result = first.json()
+        self.assertEqual((result['score'], result['correct'], result['total']), (50, 1, 2))
+        self.assertFalse(result['review'][0]['correct'])
+        self.assertEqual(result['review'][0]['answer'], '미응답')
+        self.assertEqual(result['review'][0]['correct_answer'], '둘')
+        self.store.fail_save = False
+        retry = self.client.post(f'/api/attempts/{aid}/submit', json={'answers': ['', '서울']}).json()
+        self.assertTrue(retry['saved'])
+        self.assertEqual(retry['review'], result['review'])
+
+    def test_blank_opt_in_does_not_allow_wrong_answer_count_or_forged_options(self):
+        for answers in [[], ['서울'], ['forged', ''], ['', '']]:
+            aid = self.attempt().json()['attempt_id']
+            response = self.client.post(f'/api/attempts/{aid}/submit', json={
+                'answers': answers, 'allow_unanswered': True})
+            self.assertEqual(response.status_code, 200 if answers == ['', ''] else 422)
+            if response.status_code == 200:
+                self.assertEqual(response.json()['score'], 0)
+
+    def test_participation_filters_restore_legacy_rules_and_keep_real_zero_scores(self):
+        self.store.quiz_rows += [
+            {'Title': '미풀이', 'Category': '공통', 'Content': CONTENT},
+            {'Title': '수학시험', 'Category': '수학', 'Content': CONTENT}]
+        self.store.result_rows = [
+            {'QuizTitle':'등록','User':'등록만','Score':0},
+            {'QuizTitle':'시험','User':'빈점수','Score':''},
+            {'QuizTitle':'시험','User':'문자점수','Score':'등록'},
+            {'QuizTitle':'시험','User':'영점참여','Score':0},
+            {'QuizTitle':'시험','User':'학생','Score':90},
+            {'QuizTitle':'수학시험','User':'수학학생','Score':80},
+            {'QuizTitle':'미풀이','User':'Guest01','Score':100},
+            {'QuizTitle':'미풀이','User':'myTESTaccount','Score':100}]
+        data = self.client.get('/api/participation', params={'category':'공통'}).json()
+        self.assertEqual(data['quizzes'], ['시험'])
+        self.assertEqual({r['user'] for r in data['rows']}, {'영점참여','학생'})
+        self.assertIn('수학', data['categories'])
+        all_data = self.client.get('/api/participation', params={
+            'category':'공통','only_participants':'false','hide_empty':'false','exclude_guest':'false'}).json()
+        self.assertEqual(set(all_data['quizzes']), {'시험','미풀이'})
+        rows = {r['user']:r for r in all_data['rows']}
+        self.assertNotIn('myTESTaccount', rows)
+        self.assertIn('Guest01', rows)
+        self.assertEqual(rows['등록만']['completed'], [])
+        self.assertEqual(rows['빈점수']['completed'], [])
+        self.assertEqual(rows['문자점수']['completed'], [])
+        self.assertEqual(rows['수학학생']['completed'], [])
+        self.assertEqual(rows['영점참여']['completed'], ['시험'])
+        self.assertTrue(all(r['scores'] == {} for r in rows.values()))
+        self.login()
+        admin = self.client.get('/api/participation', params={'category':'공통'}).json()
+        self.assertEqual(next(r for r in admin['rows'] if r['user']=='영점참여')['scores']['시험'], 0)
+
     def test_invalid_quiz_cannot_start(self):
         self.store.quiz_rows[0]['Content'] += '\n[Q3] broken'
         self.assertFalse(self.client.get('/api/bootstrap').json()['quizzes'][0]['valid'])

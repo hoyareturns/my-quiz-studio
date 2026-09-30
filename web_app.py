@@ -40,6 +40,7 @@ class AttemptInput(UserInput):
 
 class SubmitInput(Input):
     answers: list[str] = Field(max_length=300)
+    allow_unanswered: bool = Field(default=False, strict=True)
 
 
 class QuizInput(Input):
@@ -144,10 +145,10 @@ def grade(question, answer):
         correct = check_subjective_answer(answer, expected)
     else:
         expected = question['o'][question['a']]
-        if answer not in question['o']:
+        if answer and answer not in question['o']:
             raise HTTPException(422, '객관식 답은 제공된 보기에서 선택해 주세요.')
         correct = answer == expected
-    return {'question': question['q'], 'answer': answer, 'correct_answer': expected,
+    return {'question': question['q'], 'answer': answer or '미응답', 'correct_answer': expected,
             'explanation': question['e'], 'correct': correct}
 
 
@@ -312,7 +313,8 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
         with attempt['lock']:
             if attempt['result'] is None:
                 answers = [value.strip() for value in body.answers]
-                if len(answers) != len(attempt['questions']) or any(not answer or len(answer) > 4000 for answer in answers):
+                if (len(answers) != len(attempt['questions']) or any(len(answer) > 4000 for answer in answers)
+                        or (not body.allow_unanswered and any(not answer for answer in answers))):
                     raise HTTPException(422, '모든 문제에 답을 입력한 후 제출해 주세요.')
                 review = [grade(question, answer) for question, answer in zip(attempt['questions'], answers)]
                 correct = sum(item['correct'] for item in review)
@@ -440,21 +442,38 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
         return {'records': records, 'season_start': season_start, 'top_count': top_count}
 
     @api.get('/api/participation')
-    def participation(request: Request):
-        quizzes = sorted({str(q.get('Title', '')) for q in storage.quizzes()}, key=natural_sort_key)
+    def participation(request: Request, category: str = '', exclude_guest: bool = True,
+                      hide_empty: bool = True, only_participants: bool = True):
+        quiz_rows = storage.quizzes()
+        categories = sorted({str(q.get('Category') or '미분류') for q in quiz_rows}, key=natural_sort_key)
+        quizzes = sorted({str(q.get('Title', '')).strip() for q in quiz_rows
+                          if not category or str(q.get('Category') or '미분류') == category}, key=natural_sort_key)
         users = {}
         admin = is_admin(request)
-        for record in normalized_results():
-            if not record['user']:
+        # Preserve registration-only names without turning missing/non-numeric
+        # scores into submitted zero-point attempts. Real zero scores do count.
+        for record in storage.results():
+            user = str(record.get('User', '')).strip()
+            title = str(record.get('QuizTitle', '')).strip()
+            if not user or 'test' in user.lower() or (exclude_guest and 'guest' in user.lower()):
                 continue
-            row = users.setdefault(record['user'], {'user': record['user'], 'completed': [], 'scores': {}})
-            if record['quiz'] not in quizzes:
+            row = users.setdefault(user, {'user': user, 'completed': [], 'scores': {}})
+            try:
+                score = float(record.get('Score'))
+            except (TypeError, ValueError):
                 continue
-            if record['quiz'] not in row['completed']:
-                row['completed'].append(record['quiz'])
+            if title not in quizzes or not math.isfinite(score) or not 0 <= score <= 100:
+                continue
+            if title not in row['completed']:
+                row['completed'].append(title)
             if admin:
-                row['scores'][record['quiz']] = max(row['scores'].get(record['quiz'], 0), record['score'])
-        return {'quizzes': quizzes, 'rows': sorted(users.values(), key=lambda row: natural_sort_key(row['user']))}
+                row['scores'][title] = max(row['scores'].get(title, 0), round(score))
+        if hide_empty:
+            completed = {title for row in users.values() for title in row['completed']}
+            quizzes = [title for title in quizzes if title in completed]
+        rows = [row for row in users.values() if not only_participants or row['completed']]
+        return {'quizzes': quizzes, 'categories': categories,
+                'rows': sorted(rows, key=lambda row: natural_sort_key(row['user']))}
 
     @api.get('/api/wrongs')
     def wrongs(user: str = ''):
