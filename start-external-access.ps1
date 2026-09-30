@@ -35,6 +35,10 @@ try {
     if ($_.Exception.Message -like 'An ngrok tunnel*') { throw }
 }
 $quizLog = Join-Path $PSScriptRoot 'artifacts\ngrok.log'
+$quizPendingAgent = Get-CimInstance Win32_Process -Filter "Name = 'ngrok.exe'" | Where-Object {
+    $_.CommandLine -and $_.CommandLine.Contains($quizAgentConfig)
+}
+if ($quizPendingAgent) { throw 'The existing ngrok agent is still connecting. Retry after the network is ready.' }
 $quizArgs = 'http http://127.0.0.1:8000 --url="https://' + $Domain + '" --config="' + $quizAgentConfig + '" --inspect=false --log="' + $quizLog + '" --log-format=json'
 Start-Process -FilePath $quizAgentExe -ArgumentList $quizArgs -WorkingDirectory $PSScriptRoot -WindowStyle Hidden | Out-Null
 $quizConnected = $false
