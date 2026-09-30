@@ -208,9 +208,12 @@ class ApiTests(unittest.TestCase):
 
     def test_preview_authoring_duplicate_and_immutable_title(self):
         payload = {'title': '새 시험', 'category': '공통', 'content': CONTENT}
-        self.assertTrue(self.client.post('/api/preview', json=payload).json()['valid'])
+        self.assertEqual(self.client.get('/api/author/template').status_code, 401)
+        self.assertEqual(self.client.post('/api/preview', json=payload).status_code, 401)
         self.assertEqual(self.client.post('/api/quizzes', json=payload).status_code, 401)
         self.login()
+        self.assertEqual(self.client.get('/api/author/template').status_code, 200)
+        self.assertTrue(self.client.post('/api/preview', json=payload).json()['valid'])
         self.assertEqual(self.client.post('/api/quizzes', json=payload).status_code, 200)
         self.assertEqual(self.client.post('/api/quizzes', json=payload).status_code, 409)
         self.assertEqual(self.client.patch(f'/api/quizzes/{self.quiz_id}', json=payload).status_code, 422)
@@ -226,34 +229,31 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIsInstance(response.json()['detail'], str)
 
-    def test_public_learning_does_not_expose_saved_employee_records(self):
+    def test_learning_sections_are_public_but_management_stays_private(self):
         self.store.result_rows = [
-            {'QuizTitle': '시험', 'User': '학생', 'Score': '50', 'Duration': '11', 'Time': '2026-09-30'},
-            {'QuizTitle': '시험', 'User': '다른학생', 'Score': '100', 'Duration': '9', 'Time': '2026-09-30'}]
-        self.store.chat_rows = [{'User': '학생', 'Message': '직원 대화', 'Time': '오늘'}]
-        for path in ['/api/results', '/api/results?user=학생', '/api/participation',
-                     '/api/leaderboard', '/api/wrongs?user=학생', '/api/chat']:
+            {'QuizTitle':'시험','User':'학생','Score':'50','Duration':'11','Time':'2026-09-30'},
+            {'QuizTitle':'시험','User':'다른학생','Score':'100','Duration':'9','Time':'2026-09-30'}]
+        self.store.wrong_rows = [{'QuizTitle':'시험','User':'학생','QuestionText':'합은?','Status':'오답'}]
+        self.store.chat_rows = [{'User':'학생','Message':'공개 대화','Time':'오늘'}]
+        for path in ['/api/results?user=학생','/api/leaderboard','/api/wrongs?user=학생','/api/chat']:
             with self.subTest(path=path):
-                response = self.client.get(path)
-                self.assertEqual(response.status_code, 401)
-                self.assertNotIn('다른학생', response.text)
-                self.assertNotIn('직원 대화', response.text)
-        self.assertEqual(self.client.post('/api/chat', json={'user':'학생','message':'위조'}).status_code, 401)
-        for action in ['answer','archive']:
-            self.assertEqual(self.client.post(f'/api/wrongs/forged/{action}',
-                             json=({'user':'학생','answer':'둘'} if action == 'answer' else {'user':'학생'})).status_code, 401)
-        self.assertEqual(len(self.store.chat_rows), 1)
-        # Public learners can still take a quiz and see their own immediate result.
-        attempt = self.attempt().json()
-        submitted = self.client.post(f"/api/attempts/{attempt['attempt_id']}/submit", json={'answers':['둘','서울']})
-        self.assertEqual(submitted.status_code, 200)
-        self.assertEqual(submitted.json()['score'], 100)
-        self.login()
-        self.assertEqual(len(self.client.get('/api/results').json()['records']), 2)
+                self.assertEqual(self.client.get(path).status_code, 200)
         self.assertEqual(len(self.client.get('/api/results?user=학생').json()['records']), 1)
         self.assertEqual(self.client.get('/api/leaderboard').json()['records'][0]['user'], '다른학생')
+        self.assertEqual(self.client.get('/api/participation').status_code, 401)
+        wrong = self.client.get('/api/wrongs?user=학생').json()['items'][0]
+        self.assertEqual(self.client.post(f"/api/wrongs/{wrong['id']}/answer",json={'user':'학생','answer':'둘'}).status_code, 200)
+        self.assertEqual(self.client.post('/api/chat',json={'user':'학생','message':'공개 질문'}).status_code, 200)
+        for path in ['/api/admin/settings','/api/admin/backups','/api/author/template','/api/participation']:
+            self.assertEqual(self.client.get(path).status_code, 401)
+        attempt = self.attempt().json()
+        submitted = self.client.post(f"/api/attempts/{attempt['attempt_id']}/submit",json={'answers':['둘','서울']})
+        self.assertEqual(submitted.json()['score'], 100)
+        self.login()
         self.assertEqual(self.client.get('/api/participation').json()['rows'][0]['scores']['시험'], 100)
+        self.assertEqual(self.client.get('/api/admin/settings').status_code, 200)
         self.now += 11
+        self.assertEqual(self.client.get('/api/admin/settings').status_code, 401)
         self.assertEqual(self.client.get('/api/participation').status_code, 401)
 
     def test_https_public_origin_and_admin_cookie(self):
@@ -263,7 +263,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn('Secure', response.headers['set-cookie'])
         self.assertEqual(client.get('/api/participation').status_code, 200)
         client.post('/api/admin/logout', json={})
-        self.assertEqual(client.get('/api/participation').status_code, 401)
+        self.assertEqual(client.get('/api/admin/settings').status_code, 401)
 
     def test_wrong_regrade_and_orphan_archive_preserve_identity(self):
         self.login()

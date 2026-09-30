@@ -11,10 +11,10 @@ foreach ($quizFile in @($quizAgentExe,$quizAgentConfig)) {
 & $quizAgentExe config check --config $quizAgentConfig
 if ($LASTEXITCODE -ne 0) { throw 'Invalid ngrok connection configuration.' }
 & (Join-Path $PSScriptRoot 'start-company-server.ps1')
-# Refuse to publish an old server that exposes employee records anonymously.
+# Keep authoring and administration protected while learning sections stay public.
 $quizBootstrap = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/api/bootstrap' -TimeoutSec 30
-if ($quizBootstrap.records_private -ne $true) { throw 'Update/restart the education server before enabling public learning.' }
-foreach ($quizPrivatePath in @('results','participation','leaderboard','wrongs','chat')) {
+if ($quizBootstrap.authoring_private -ne $true) { throw 'Update/restart the education server before enabling public learning.' }
+foreach ($quizPrivatePath in @('admin/settings','admin/backups','author/template','participation')) {
     try {
         $quizProbe = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/$quizPrivatePath" -UseBasicParsing -TimeoutSec 5
         $quizStatus = [int]$quizProbe.StatusCode
@@ -22,7 +22,7 @@ foreach ($quizPrivatePath in @('results','participation','leaderboard','wrongs',
         if (-not $_.Exception.Response) { throw }
         $quizStatus = [int]$_.Exception.Response.StatusCode
     }
-    if ($quizStatus -ne 401) { throw "Employee record protection check failed: $quizPrivatePath" }
+    if ($quizStatus -ne 401) { throw "Administrator protection check failed: $quizPrivatePath" }
 }
 try {
     $quizExistingTunnels = Invoke-RestMethod -Uri 'http://127.0.0.1:4040/api/tunnels' -TimeoutSec 2
@@ -51,4 +51,4 @@ for ($quizTry = 0; $quizTry -lt 30; $quizTry++) {
 }
 if (-not $quizConnected) { throw 'External connection did not start. Check artifacts/ngrok.log.' }
 Write-Host "External URL: https://$Domain"
-Write-Host 'Learning is open without a shared password. Employee records require administrator login.'
+Write-Host 'Learning sections are public. Authoring and administration require administrator login.'

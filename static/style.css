@@ -1832,3 +1832,13 @@ svg {
     flex-shrink: 0;
   }
 }
+
+.nav-item.is-disabled,
+.more-card.is-disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.nav-item.is-disabled:hover {
+  background: transparent;
+  color: #71817b;
+}

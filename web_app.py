@@ -279,10 +279,10 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
                 questions, errors = validate_quiz_text(row.get('Content', ''))
                 quizzes.append({'id': quiz_id(title), 'title': title, 'category': str(row.get('Category', '공통')),
                                 'count': len(questions), 'valid': bool(title and questions and not errors and len(questions) <= 300 and titles.count(title) == 1)})
-            return {'quizzes': quizzes, 'admin': is_admin(request), 'connected': True, 'message': '', 'records_private': True,
+            return {'quizzes': quizzes, 'admin': is_admin(request), 'connected': True, 'message': '', 'records_private': False, 'authoring_private': True,
                     'settings': public_settings(storage.settings())}
         except StorageError as exc:
-            return {'quizzes': [], 'admin': is_admin(request), 'connected': False, 'message': str(exc), 'records_private': True,
+            return {'quizzes': [], 'admin': is_admin(request), 'connected': False, 'message': str(exc), 'records_private': False, 'authoring_private': True,
                     'settings': dict(PUBLIC_DEFAULTS)}
 
     @api.post('/api/attempts')
@@ -330,11 +330,13 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
             return dict(result)
 
     @api.get('/api/author/template')
-    def template():
+    def template(request: Request):
+        require_admin(request)
         return {'template': EXTERNAL_PROMPT_TEMPLATE}
 
     @api.post('/api/preview')
-    def preview(body: QuizInput):
+    def preview(body: QuizInput, request: Request):
+        require_admin(request)
         questions, errors = validate_quiz_text(body.content)
         if len(questions) > 300:
             errors.append('퀴즈는 한 번에 300문제까지 등록할 수 있습니다.')
@@ -408,8 +410,9 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.get('/api/results')
     def results(request: Request, user: str = ''):
-        require_admin(request)
         user = user.strip()
+        if not user and not is_admin(request):
+            raise HTTPException(422, '기록을 확인할 학습자 이름을 입력해 주세요.')
         records = normalized_results()
         if user:
             records = [row for row in records if row['user'] == user]
@@ -417,7 +420,6 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.get('/api/leaderboard')
     def leaderboard(request: Request):
-        require_admin(request)
         # Keep each learner's best attempt for each quiz.
         settings = public_settings(storage.settings())
         season_start = settings['season_start']
@@ -478,7 +480,6 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.get('/api/wrongs')
     def wrongs(request: Request, user: str = ''):
-        require_admin(request)
         if not user.strip():
             raise HTTPException(422, '학습자 이름을 입력해 주세요.')
         quizzes = storage.quizzes()
@@ -498,7 +499,6 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.post('/api/wrongs/{identifier}/answer')
     def answer_wrong(identifier: str, body: AnswerInput, request: Request):
-        require_admin(request)
         row = find_wrong(identifier, body.user)
         question = wrong_question(row, storage.quizzes())
         if question is None:
@@ -511,7 +511,6 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.post('/api/wrongs/{identifier}/archive')
     def archive_wrong(identifier: str, body: UserInput, request: Request):
-        require_admin(request)
         row = find_wrong(identifier, body.user)
         if wrong_question(row, storage.quizzes()) is not None:
             raise HTTPException(422, '원본 문제가 있는 오답은 다시 풀어 정복해 주세요.')
@@ -521,12 +520,10 @@ def create_app(storage=None, config: WebConfig | None = None, clock=time.monoton
 
     @api.get('/api/chat')
     def chats(request: Request):
-        require_admin(request)
         return {'messages': [{'user': str(row.get('User', '')), 'message': str(row.get('Message', '')), 'time': str(row.get('Time', ''))} for row in storage.chats()][-50:]}
 
     @api.post('/api/chat')
     def chat(body: ChatInput, request: Request):
-        require_admin(request)
         storage.save_chat(body.user, body.message)
         return {'message': '메시지를 등록했습니다.'}
 

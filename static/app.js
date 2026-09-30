@@ -102,7 +102,7 @@ const draftPayload = () => ({
   category: draft.category || "",
   content: draft.content || "",
 });
-const main = $("#main");
+const main = $("#page-content");
 // Local math assets; neither quiz content nor formulas leave this server.
 const mathObserver = new MutationObserver(() => {
   mathObserver.disconnect();
@@ -191,8 +191,8 @@ async function busy(button, action) {
     button.textContent = label;
   }
 }
-function heading(eyebrow, title, description, extra = "") {
-  return `<div class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${esc(title)}</h1><p>${esc(description)}</p></div>${extra}</div>`;
+function heading(title, extra = "") {
+  return `<h1 class="visually-hidden">${esc(title)}</h1>${extra ? `<div class="actions" style="margin-bottom:20px">${extra}</div>` : ""}`;
 }
 function empty(title, description, action = "") {
   return `<div class="empty"><div class="empty-icon">◇</div><h2>${esc(title)}</h2><p>${esc(description)}</p>${action}</div>`;
@@ -304,36 +304,28 @@ on("#admin-form", "submit", async (e) => {
     }
   });
 });
-const privatePages = new Set([
-  "review",
-  "records",
-  "leaderboard",
-  "participation",
-  "chat",
-]);
-const visibleNavs = () =>
-  navs.filter(([id]) => state.admin || !privatePages.has(id));
-const visibleMoreNavs = () =>
-  moreNavs.filter(([id]) => state.admin || !privatePages.has(id));
-function recordAccessGate() {
+const adminOnlyPages = new Set(["author", "participation", "admin"]);
+function adminAccessGate() {
   main.innerHTML = empty(
-    "기록 조회는 관리자만 이용할 수 있어요",
-    "직원의 학습 기록과 참여 현황을 보호하고 있습니다. 문제 풀기는 로그인 없이 이용할 수 있어요.",
-    '<button id="records-login" class="primary">관리자 로그인</button><a href="#learn" class="secondary">문제 풀기</a>',
+    "관리자 로그인 후 이용할 수 있어요",
+    "문제 만들기·참여 현황·운영 관리는 관리자만 이용할 수 있습니다. 다른 학습 메뉴는 로그인 없이 이용할 수 있어요.",
+    '<button id="page-admin-login" class="primary">관리자 로그인</button><a href="#learn" class="secondary">문제 풀기</a>',
   );
-  on("#records-login", "click", adminAction);
+  on("#page-admin-login", "click", adminAction);
 }
 function renderNav() {
-  const link = ([id, label]) =>
-    `<a class="nav-item ${state.page === id ? "active" : ""}" href="#${id}" ${state.page === id ? 'aria-current="page"' : ""}>${icon(id)}<span>${label}</span></a>`;
+  const link = ([id, label]) => {
+    const locked = !state.admin && adminOnlyPages.has(id);
+    const content = `${icon(id)}<span>${label}</span>`;
+    return locked
+      ? `<span class="nav-item is-disabled" role="link" aria-disabled="true" title="관리자 로그인 후 이용할 수 있어요">${content}</span>`
+      : `<a class="nav-item ${state.page === id ? "active" : ""}" href="#${id}" ${state.page === id ? 'aria-current="page"' : ""}>${content}</a>`;
+  };
   $("#desktop-nav").innerHTML =
-    visibleNavs().map(link).join("") +
+    navs.map(link).join("") +
     '<div class="nav-divider"></div>' +
-    visibleMoreNavs().map(link).join("");
-  $("#mobile-nav").innerHTML = [
-    ...visibleNavs(),
-    ["more", state.admin ? "더보기" : "관리"],
-  ]
+    moreNavs.map(link).join("");
+  $("#mobile-nav").innerHTML = [...navs, ["more", "더보기"]]
     .map(([id, label]) =>
       link([id, label]).replace(
         "nav-item ",
@@ -410,20 +402,19 @@ function loading() {
     '<div class="loading" role="status"><span class="spinner"></span>불러오고 있어요.</div>';
 }
 async function route() {
-  stopValueCarousel();
   const page = location.hash.slice(1) || "learn";
   state.page = [...navs, ...moreNavs, ["more", ""]].some((x) => x[0] === page)
     ? page
     : "learn";
   renderNav();
   const revision = ++state.revision;
-  if (!state.admin && privatePages.has(state.page)) {
-    recordAccessGate();
+  if (!state.admin && adminOnlyPages.has(state.page)) {
+    adminAccessGate();
     return;
   }
   try {
     if (state.page === "learn") renderLibrary();
-    else if (state.page === "author") renderAuthor();
+    else if (state.page === "author") await renderAuthor();
     else if (state.page === "more") renderMore();
     else {
       loading();
@@ -439,11 +430,11 @@ async function route() {
     }
   } catch (error) {
     if (revision === state.revision) {
-      if (error.status === 401 && privatePages.has(state.page)) {
+      if (error.status === 401 && adminOnlyPages.has(state.page)) {
         state.admin = false;
         updateProfile();
         renderNav();
-        recordAccessGate();
+        adminAccessGate();
         return;
       }
       main.innerHTML = empty(
@@ -472,7 +463,6 @@ const companyValues = [
   { title: "자존적 인간애", art: "humanity" },
   { title: "근본주의", art: "principles" },
 ];
-let stopValueCarousel = () => {};
 function valueCarouselMarkup() {
   return `<section class="value-carousel" aria-label="성화 미션·비전·핵심가치" aria-roledescription="슬라이드 쇼">
     <div class="value-slides">${companyValues
@@ -541,7 +531,6 @@ function mountValueCarousel() {
     clearInterval(timer);
     motion.removeEventListener("change", onMotion);
   };
-  stopValueCarousel = stop;
   dots.forEach((dot, i) =>
     on(dot, "click", () => {
       show(i);
@@ -566,7 +555,6 @@ function mountValueCarousel() {
   schedule();
 }
 function renderLibrary() {
-  stopValueCarousel();
   if (state.attempt) {
     if (state.result) renderResult();
     else renderQuestion();
@@ -584,8 +572,7 @@ function renderLibrary() {
           "warn",
         )
       : "") +
-    `${valueCarouselMarkup()}<section aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">학습 세트 <span class="count" id="quiz-count"></span></h2><label class="search-box"><span class="visually-hidden">문제 검색</span>${icon("search")}<input id="quiz-search" type="search" placeholder="배우고 싶은 주제를 검색하세요" value="${esc(state.search)}"></label></div><div class="filters" role="group" aria-label="분야 필터">${["전체", ...cats].map((c) => `<button class="chip ${c === state.category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)}</button>`).join("")}</div><div class="quiz-grid" id="quiz-grid"></div></section>`;
-  mountValueCarousel();
+    `<section aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">학습 세트 <span class="count" id="quiz-count"></span></h2><label class="search-box"><span class="visually-hidden">문제 검색</span>${icon("search")}<input id="quiz-search" type="search" placeholder="배우고 싶은 주제를 검색하세요" value="${esc(state.search)}"></label></div><div class="filters" role="group" aria-label="분야 필터">${["전체", ...cats].map((c) => `<button class="chip ${c === state.category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)}</button>`).join("")}</div><div class="quiz-grid" id="quiz-grid"></div></section>`;
   renderCards();
   on("#quiz-search", "input", (e) => {
     state.search = e.target.value;
@@ -769,11 +756,7 @@ function previewPlaceholder() {
 }
 function renderAuthor() {
   main.innerHTML =
-    heading(
-      "QUESTION STUDIO",
-      state.editId ? "학습 세트 수정하기" : "좋은 문제를, 더 쉽게.",
-      "요청문을 복사하고 답변을 붙여넣으면 준비 끝. 등록 전에 미리 확인하세요.",
-    ) +
+    heading(state.editId ? "학습 세트 수정하기" : "좋은 문제를, 더 쉽게.") +
     `<div class="steps"><div class="step"><b>1</b>요청문 복사</div><div class="step active"><b>2</b>문제 붙여넣기</div><div class="step"><b>3</b>확인하고 등록</div></div><div class="author-layout"><div><section class="panel"><details id="prompt-details" ${!draft.content ? "open" : ""}><summary><h2>ChatGPT에 요청할 내용 만들기</h2></summary><p class="field-hint">원하는 주제를 적고 요청문을 복사해 ChatGPT에 붙여넣으세요.</p><div class="form-grid"><label>주제<input id="prompt-topic" placeholder="예: 엑셀 기본 함수" value="${esc(draft.topic || "")}"></label><label>문제 수<select id="prompt-count">${[5, 10, 15, 20].map((n) => `<option ${Number(draft.count || 10) === n ? "selected" : ""}>${n}</option>`).join("")}</select></label></div><label style="margin-top:16px">추가 요청<input id="prompt-extra" placeholder="예: 초보자 수준, 주관식 2개 포함" value="${esc(draft.extra || "")}"></label><div class="actions"><button id="copy-prompt" class="primary">요청문 복사</button><a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" class="secondary">ChatGPT 열기 ↗</a></div><details><summary class="field-hint">요청문 직접 보기</summary><label class="visually-hidden" for="prompt-text">완성된 요청문</label><textarea id="prompt-text" class="prompt-output" readonly></textarea></details><p class="field-hint">이 앱은 AI API를 호출하지 않습니다. 외부 서비스의 이용 조건은 해당 서비스를 따릅니다.</p></details></section><section class="panel"><div class="panel-heading"><h2>${state.editId ? "문제 내용 수정" : "문제 붙여넣기"}</h2><span id="draft-state" class="draft-state">임시 저장 준비</span></div><label>학습 세트 이름<input id="draft-title" maxlength="150" placeholder="예: 엑셀 기본 함수 연습" value="${esc(draft.title || "")}" ${state.editId ? "readonly" : ""}></label><label>분야<input id="draft-category" maxlength="80" list="categories" placeholder="예: 디지털 역량" value="${esc(draft.category || "")}"></label><datalist id="categories">${[
       ...new Set([
         ...state.quizzes.map((q) => q.category),
@@ -951,19 +934,18 @@ function renderPreview() {
 }
 function renderMore() {
   main.innerHTML =
-    heading(
-      "LEARNING CENTER",
-      state.admin ? "교육 운영 공간" : "운영 관리",
-      state.admin
-        ? "직원의 교육 참여와 학습 기록을 확인해요."
-        : "문제 풀기는 로그인 없이, 기록 조회와 운영은 관리자 로그인 후 이용해요.",
-    ) +
-    `<div class="more-grid">${visibleMoreNavs()
-      .map(
-        ([id, title]) =>
-          `<a href="#${id}" class="more-card">${icon(id)}<div><strong>${title}</strong><small>${{ leaderboard: "주제별 우수 성취 기록", participation: "학습 세트별 참여 여부", chat: "질문과 배움 나누기", admin: "문제·설정·백업 관리" }[id]}</small></div></a>`,
-      )
-      .join("")}</div>`;
+    heading("함께 배우는 공간") +
+    `<div class="more-grid">${moreNavs
+      .map(([id, title]) => {
+        const content = `${icon(id)}<div><strong>${title}</strong><small>${{ leaderboard: "주제별 우수 성취 기록", participation: "학습 세트별 참여 여부", chat: "질문과 배움 나누기", admin: "관리자 로그인 후 이용" }[id]}</small></div>`;
+        return !state.admin && adminOnlyPages.has(id)
+          ? `<div class="more-card is-disabled" role="link" aria-disabled="true">${content}</div>`
+          : `<a href="#${id}" class="more-card">${content}</a>`;
+      })
+      .join(
+        "",
+      )}</div><div class="actions" style="margin-top:24px"><button id="more-admin-login" class="secondary">${state.admin ? "관리자 로그아웃" : "관리자 로그인"}</button></div>`;
+  on("#more-admin-login", "click", adminAction);
 }
 function userGate() {
   main.innerHTML = empty(
@@ -1000,22 +982,14 @@ async function renderRecords(rev) {
       )
     : 0;
   main.innerHTML =
-    heading(
-      "LEARNING JOURNAL",
-      `${state.user} 님의 학습 기록`,
-      "한 번의 점수보다, 꾸준히 쌓이는 과정이 중요해요.",
-    ) +
+    heading(`${state.user} 님의 학습 기록`) +
     `<div class="metrics"><div class="metric"><span>완료한 학습</span><strong>${records.length}<small>회</small></strong></div><div class="metric"><span>평균 점수</span><strong>${average}<small>점</small></strong></div><div class="metric"><span>학습한 세트</span><strong>${new Set(records.map((r) => r.quiz)).size}<small>개</small></strong></div></div><div class="section-heading"><h2>최근 학습</h2><a class="quiet" href="#review">오답 복습하기 →</a></div><div class="record-list">${records.length ? recordRows(records) : empty("첫 번째 기록을 만들어 볼까요?", "학습 세트를 풀고 제출하면 여기에 기록이 쌓여요.", '<a href="#learn" class="primary">문제 풀러 가기</a>')}</div>`;
 }
 async function renderLeaderboard(rev) {
   const { records, season_start, top_count } = await api("/leaderboard");
   if (rev !== state.revision) return;
   main.innerHTML =
-    heading(
-      "GROW TOGETHER",
-      "서로의 성장을 응원해요",
-      `학습 세트별 상위 ${top_count || 3}명의 기록${season_start ? " · " + season_start.slice(0, 10) + "부터" : ""}입니다.`,
-    ) +
+    heading("서로의 성장을 응원해요") +
     `<label>학습 세트 선택<select id="rank-filter"><option value="">전체 학습 세트</option>${[...new Set(records.map((r) => r.quiz))].map((q) => `<option>${esc(q)}</option>`).join("")}</select></label><div id="rank-list" class="record-list"></div>`;
   const draw = () => {
     const filtered = records.filter(
@@ -1038,11 +1012,7 @@ async function renderParticipation(rev) {
   const initial = await api(`/participation?${new URLSearchParams(filters)}`);
   if (rev !== state.revision) return;
   main.innerHTML =
-    heading(
-      "LEARNING TOGETHER",
-      "함께하는 학습 현황",
-      "선택한 퀴즈 그룹에서 실제로 풀이를 제출한 사람을 확인하세요.",
-    ) +
+    heading("함께하는 학습 현황") +
     `<section class="panel participation-filters" aria-label="참여 현황 필터">
       <label>퀴즈 그룹 선택<select id="participation-category"><option value="">전체 퀴즈</option>${initial.categories.map((category) => `<option value="${esc(category)}" ${filters.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></label>
       <div class="participation-checks">
@@ -1092,11 +1062,7 @@ async function renderWrongs(rev) {
   const { items } = await api(`/wrongs?user=${encodeURIComponent(state.user)}`);
   if (rev !== state.revision) return;
   main.innerHTML =
-    heading(
-      "TRY ONCE MORE",
-      "틀렸던 문제, 오늘은 내 것으로.",
-      "한 문제씩 다시 풀며 헷갈렸던 개념을 정리해요.",
-    ) + `<div id="wrong-area"></div>`;
+    heading("틀렸던 문제, 오늘은 내 것으로.") + `<div id="wrong-area"></div>`;
   let index = 0,
     pending = false;
   const draw = () => {
@@ -1182,11 +1148,7 @@ async function renderChat(rev) {
   const data = await api("/chat");
   if (rev !== state.revision) return;
   main.innerHTML =
-    heading(
-      "SHARE & LEARN",
-      "배움을 나누는 이야기방",
-      "궁금한 점이나 도움이 된 내용을 함께 나눠 보세요.",
-    ) +
+    heading("배움을 나누는 이야기방") +
     `<div class="narrow"><section class="panel"><div class="chat-list" id="chat-list">${data.messages.length ? data.messages.map((m) => `<article class="chat-bubble ${m.user === state.user ? "mine" : ""}"><strong>${esc(m.user)}</strong><time>${esc(m.time)}</time><p>${esc(m.message)}</p></article>`).join("") : '<p class="muted">아직 이야기가 없어요. 첫 인사를 남겨 보세요.</p>'}</div><form id="chat-form"><label style="margin-top:24px">${esc(state.user || "학습자 이름을 먼저 설정해 주세요")}<textarea id="chat-message" maxlength="2000" required placeholder="함께 나누고 싶은 이야기를 적어 주세요." style="min-height:90px"></textarea></label><div class="actions"><button class="primary">이야기 남기기</button></div></form></section></div>`;
   $("#chat-list").scrollTop = $("#chat-list").scrollHeight;
   on("#chat-form", "submit", async (e) => {
@@ -1207,11 +1169,7 @@ async function renderChat(rev) {
 async function renderAdmin(rev) {
   if (!state.admin) {
     main.innerHTML =
-      heading(
-        "MANAGE YOUR SPACE",
-        "학습 공간 관리",
-        "문제와 운영 설정을 관리할 수 있습니다.",
-      ) +
+      heading("학습 공간 관리") +
       empty(
         "관리자 인증이 필요해요",
         "설정한 관리자 비밀번호로 로그인해 주세요.",
@@ -1222,9 +1180,7 @@ async function renderAdmin(rev) {
   }
   main.innerHTML =
     heading(
-      "MANAGE YOUR SPACE",
       "학습 공간 관리",
-      "기존 문제와 기록은 Google Sheets에 보관됩니다.",
       '<button id="logout-page" class="secondary">로그아웃</button>',
     ) +
     `<div class="filters admin-tabs"><button class="chip active" data-admin-tab="quizzes">문제 관리</button><button class="chip" data-admin-tab="settings">운영 설정</button><button class="chip" data-admin-tab="backups">백업·복구</button></div><div id="admin-area"></div>`;
@@ -1371,6 +1327,8 @@ async function drawAdminTab(tab) {
     );
   }
 }
+$("#company-banner").innerHTML = valueCarouselMarkup();
+mountValueCarousel();
 updateProfile();
 renderNav();
 bootstrap()
