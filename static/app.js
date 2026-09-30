@@ -385,6 +385,7 @@ function loading() {
     '<div class="loading" role="status"><span class="spinner"></span>불러오고 있어요.</div>';
 }
 async function route() {
+  stopValueCarousel();
   const page = location.hash.slice(1) || "learn";
   state.page = [...navs, ...moreNavs, ["more", ""]].some((x) => x[0] === page)
     ? page
@@ -418,7 +419,118 @@ async function route() {
     }
   }
 }
+// Original artwork: https://www.seonghwa.co.kr/ → About → 가치체계.
+const companyValues = [
+  {
+    title: "미션",
+    copy: "우리는 사람들에게<br>더 나은 에너지를 불어 넣는다",
+    art: "mission",
+  },
+  {
+    title: "비전",
+    copy: "가장 신뢰받는<br>기계시스템 인테그레이터",
+    art: "vision",
+  },
+  { title: "소프트한 하드웨어", art: "hardware" },
+  { title: "효과적인 효율", art: "efficiency" },
+  { title: "자존적 인간애", art: "humanity" },
+  { title: "근본주의", art: "principles" },
+];
+let stopValueCarousel = () => {};
+function valueCarouselMarkup() {
+  return `<section class="value-carousel" aria-label="성화 미션·비전·핵심가치" aria-roledescription="슬라이드 쇼">
+    <div class="value-slides">${companyValues
+      .map(
+        (
+          item,
+          i,
+        ) => `<div class="value-slide" role="group" aria-roledescription="슬라이드" aria-label="${i + 1} / ${companyValues.length}" ${i ? "hidden" : ""}>
+      <span class="value-art value-art-${item.art}" aria-hidden="true"></span>
+      <div class="value-text">${i > 1 ? '<span class="value-kicker">CORE VALUE · 핵심가치</span>' : ""}<h3>${item.title}</h3>${item.copy ? `<p>${item.copy}</p>` : ""}</div>
+    </div>`,
+      )
+      .join("")}</div>
+    <div class="value-controls"><div class="value-dots" role="group" aria-label="표시할 가치 선택">${companyValues.map((item, i) => `<button type="button" data-value-slide="${i}" aria-label="${item.title} 보기" aria-pressed="${i === 0}"><span></span></button>`).join("")}</div><button type="button" class="value-pause" aria-label="자동 전환 일시정지">Ⅱ</button></div>
+  </section>`;
+}
+function mountValueCarousel() {
+  const root = $(".value-carousel");
+  if (!root) return;
+  const slides = $$(".value-slide", root);
+  const dots = $$("[data-value-slide]", root);
+  const pause = $(".value-pause", root);
+  const motion = matchMedia("(prefers-reduced-motion: reduce)");
+  let current = 0,
+    paused = motion.matches,
+    hovered = false,
+    timer;
+  const updatePause = () => {
+    pause.textContent = paused ? "▶" : "Ⅱ";
+    pause.setAttribute(
+      "aria-label",
+      paused ? "자동 전환 시작" : "자동 전환 일시정지",
+    );
+  };
+  const show = (index) => {
+    current = index;
+    slides.forEach((slide, i) => {
+      slide.hidden = i !== current;
+    });
+    dots.forEach((dot, i) =>
+      dot.setAttribute("aria-pressed", String(i === current)),
+    );
+  };
+  const schedule = () => {
+    clearInterval(timer);
+    if (paused) return;
+    timer = setInterval(() => {
+      if (!root.isConnected) {
+        stop();
+        return;
+      }
+      if (
+        !document.hidden &&
+        !hovered &&
+        !root.contains(document.activeElement)
+      )
+        show((current + 1) % slides.length);
+    }, 6000);
+  };
+  const onMotion = () => {
+    paused = motion.matches;
+    updatePause();
+    schedule();
+  };
+  const stop = () => {
+    clearInterval(timer);
+    motion.removeEventListener("change", onMotion);
+  };
+  stopValueCarousel = stop;
+  dots.forEach((dot, i) =>
+    on(dot, "click", () => {
+      show(i);
+      paused = true;
+      updatePause();
+      schedule();
+    }),
+  );
+  on(pause, "click", () => {
+    paused = !paused;
+    updatePause();
+    schedule();
+  });
+  on(root, "pointerenter", () => {
+    hovered = true;
+  });
+  on(root, "pointerleave", () => {
+    hovered = false;
+  });
+  motion.addEventListener("change", onMotion);
+  updatePause();
+  schedule();
+}
 function renderLibrary() {
+  stopValueCarousel();
   if (state.attempt) {
     if (state.result) renderResult();
     else renderQuestion();
@@ -441,7 +553,8 @@ function renderLibrary() {
           "warn",
         )
       : "") +
-    `<section class="hero"><div><span class="hero-tag">ONE STEP AT A TIME</span><h2>작은 배움이 쌓여,<br>자신감이 되니까.</h2><p>짧은 퀴즈로 이해를 점검하고,<br>놓친 문제는 오답 노트에서 다시 만나요.</p></div><div class="hero-art" aria-hidden="true"><div class="circle"></div><div class="book"></div><span class="hero-spark">✦</span><div class="circle"></div></div></section><section aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">학습 세트 <span class="count" id="quiz-count"></span></h2><label class="search-box"><span class="visually-hidden">문제 검색</span>${icon("search")}<input id="quiz-search" type="search" placeholder="배우고 싶은 주제를 검색하세요" value="${esc(state.search)}"></label></div><div class="filters" role="group" aria-label="분야 필터">${["전체", ...cats].map((c) => `<button class="chip ${c === state.category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)}</button>`).join("")}</div><div class="quiz-grid" id="quiz-grid"></div></section>`;
+    `<section class="learning-hero"><div class="learning-hero-copy"><span class="hero-label">ONE STEP AT A TIME</span><h2>작은 배움이 쌓여,<br>자신감이 되니까.</h2></div>${valueCarouselMarkup()}</section><section aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">학습 세트 <span class="count" id="quiz-count"></span></h2><label class="search-box"><span class="visually-hidden">문제 검색</span>${icon("search")}<input id="quiz-search" type="search" placeholder="배우고 싶은 주제를 검색하세요" value="${esc(state.search)}"></label></div><div class="filters" role="group" aria-label="분야 필터">${["전체", ...cats].map((c) => `<button class="chip ${c === state.category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)}</button>`).join("")}</div><div class="quiz-grid" id="quiz-grid"></div></section>`;
+  mountValueCarousel();
   renderCards();
   on("#quiz-search", "input", (e) => {
     state.search = e.target.value;
