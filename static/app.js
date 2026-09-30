@@ -540,12 +540,7 @@ function renderLibrary() {
   if (!cats.includes(state.category) && state.category !== "전체")
     state.category = "전체";
   main.innerHTML =
-    heading(
-      "MY LEARNING",
-      "오늘의 배움을 시작해요",
-      "관심 있는 주제를 골라 나의 실력을 확인해 보세요.",
-      `<div class="stat-row"><div><strong>${state.quizzes.length}</strong><span>개의 학습 세트</span></div></div>`,
-    ) +
+    '<h1 class="visually-hidden">직원 교육</h1>' +
     (!state.connected
       ? notice(
           state.connectionMessage ||
@@ -553,7 +548,7 @@ function renderLibrary() {
           "warn",
         )
       : "") +
-    `<section class="learning-hero"><div class="learning-hero-copy"><span class="hero-label">ONE STEP AT A TIME</span><h2>작은 배움이 쌓여,<br>자신감이 되니까.</h2></div>${valueCarouselMarkup()}</section><section aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">학습 세트 <span class="count" id="quiz-count"></span></h2><label class="search-box"><span class="visually-hidden">문제 검색</span>${icon("search")}<input id="quiz-search" type="search" placeholder="배우고 싶은 주제를 검색하세요" value="${esc(state.search)}"></label></div><div class="filters" role="group" aria-label="분야 필터">${["전체", ...cats].map((c) => `<button class="chip ${c === state.category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)}</button>`).join("")}</div><div class="quiz-grid" id="quiz-grid"></div></section>`;
+    `${valueCarouselMarkup()}<section aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">학습 세트 <span class="count" id="quiz-count"></span></h2><label class="search-box"><span class="visually-hidden">문제 검색</span>${icon("search")}<input id="quiz-search" type="search" placeholder="배우고 싶은 주제를 검색하세요" value="${esc(state.search)}"></label></div><div class="filters" role="group" aria-label="분야 필터">${["전체", ...cats].map((c) => `<button class="chip ${c === state.category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)}</button>`).join("")}</div><div class="quiz-grid" id="quiz-grid"></div></section>`;
   mountValueCarousel();
   renderCards();
   on("#quiz-search", "input", (e) => {

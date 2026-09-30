@@ -265,14 +265,12 @@ small {
   border-bottom: 1px solid var(--line);
   background: #ffffffa8;
 }
-.desktop-greeting {
-  font-size: 13px;
-  color: var(--muted);
-}
+
 .mobile-brand {
   display: none;
 }
 .profile {
+  margin-left: auto;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -1337,9 +1335,7 @@ svg {
     height: 69px;
     padding: 0 23px;
   }
-  .desktop-greeting {
-    display: none;
-  }
+
   .mobile-brand {
     display: flex;
     gap: 9px;
@@ -1659,45 +1655,45 @@ svg {
 }
 
 /* Company artwork stays local; CSS windows show each original symbol. */
-.learning-hero {
-  display: grid;
-  grid-template-columns: 1fr 330px;
-  align-items: center;
-  gap: 32px;
-  padding: 28px 36px;
-  margin-bottom: 30px;
-  border-radius: 24px;
-  background: #176e64;
-  color: white;
-}
-.hero-label {
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 5px;
-  background: #ffffff12;
-  color: #e2f1b9;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1.1px;
-}
-.learning-hero-copy h2 {
-  margin: 16px 0 0;
-  font-size: 28px;
-  line-height: 1.4;
-  letter-spacing: -0.7px;
-  color: #fff;
-}
 .value-carousel {
+  position: relative;
+  isolation: isolate;
   min-width: 0;
-  padding: 16px 16px 4px;
-  border-radius: 20px;
-  background: #f9fcfc;
+  margin-bottom: 30px;
+  padding: 20px 24px 8px;
+  overflow: hidden;
+  border: 1px solid #dfe8ef;
+  border-radius: 24px;
+  background: #fbfdff;
   color: #073357;
-  box-shadow: 0 8px 22px #00392f18;
+}
+.value-carousel::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: url("/static/values-world.svg") center / cover no-repeat;
+  opacity: 0.7;
+  pointer-events: none;
+}
+.value-carousel::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    #ffffff08,
+    #ffffffd9 38%,
+    #ffffffed 50%,
+    #ffffffd9 62%,
+    #ffffff08
+  );
+  pointer-events: none;
 }
 .value-slides {
   position: relative;
-  height: 171px;
+  height: 196px;
 }
 .value-slide {
   display: flex;
@@ -1752,14 +1748,14 @@ svg {
 }
 .value-text h3 {
   margin: 0;
-  font-size: 19px;
+  font-size: 25px;
   font-weight: 800;
   color: #073357;
   letter-spacing: -0.4px;
 }
 .value-text p {
-  margin: 5px 0 0;
-  font-size: 13px;
+  margin: 7px 0 0;
+  font-size: 15px;
   line-height: 1.65;
   color: #52616d;
 }
@@ -1817,47 +1813,20 @@ svg {
     transform: translateY(0);
   }
 }
-@media (max-width: 1000px) {
-  .learning-hero {
-    grid-template-columns: 1fr 280px;
-    padding: 26px;
-    gap: 20px;
-  }
-  .learning-hero-copy h2 {
-    font-size: 25px;
-  }
-}
 @media (max-width: 640px) {
-  .learning-hero {
-    grid-template-columns: 1fr;
-    padding: 24px;
-    gap: 22px;
+  .value-carousel {
+    padding: 18px 14px 6px;
     border-radius: 20px;
+    margin-bottom: 26px;
   }
-  .learning-hero-copy h2 {
-    font-size: 25px;
-    margin-top: 12px;
+  .value-carousel::before {
+    opacity: 0.4;
   }
-  .value-carousel {
-    width: 100%;
+  .value-text h3 {
+    font-size: 23px;
   }
-  .value-slides {
-    height: 163px;
-  }
-}
-
-@media (max-width: 360px) {
-  .learning-hero {
-    padding: 22px 16px;
-  }
-  .value-carousel {
-    padding-inline: 12px;
-  }
-  .value-controls {
-    gap: 4px;
-  }
-  .value-dots button {
-    width: 24px;
+  .value-text p {
+    font-size: 14px;
   }
   .value-pause {
     flex-shrink: 0;
