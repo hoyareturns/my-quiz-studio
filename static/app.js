@@ -315,11 +315,9 @@ function adminAccessGate() {
 }
 function renderNav() {
   const link = ([id, label]) => {
-    const locked = !state.admin && adminOnlyPages.has(id);
+    if (!state.admin && adminOnlyPages.has(id)) return "";
     const content = `${icon(id)}<span>${label}</span>`;
-    return locked
-      ? `<span class="nav-item is-disabled" role="link" aria-disabled="true" title="관리자 로그인 후 이용할 수 있어요">${content}</span>`
-      : `<a class="nav-item ${state.page === id ? "active" : ""}" href="#${id}" ${state.page === id ? 'aria-current="page"' : ""}>${content}</a>`;
+    return `<a class="nav-item ${state.page === id ? "active" : ""}" href="#${id}" ${state.page === id ? 'aria-current="page"' : ""}>${content}</a>`;
   };
   $("#desktop-nav").innerHTML =
     navs.map(link).join("") +
@@ -936,11 +934,10 @@ function renderMore() {
   main.innerHTML =
     heading("함께 배우는 공간") +
     `<div class="more-grid">${moreNavs
+      .filter(([id]) => state.admin || !adminOnlyPages.has(id))
       .map(([id, title]) => {
         const content = `${icon(id)}<div><strong>${title}</strong><small>${{ leaderboard: "주제별 우수 성취 기록", participation: "학습 세트별 참여 여부", chat: "질문과 배움 나누기", admin: "관리자 로그인 후 이용" }[id]}</small></div>`;
-        return !state.admin && adminOnlyPages.has(id)
-          ? `<div class="more-card is-disabled" role="link" aria-disabled="true">${content}</div>`
-          : `<a href="#${id}" class="more-card">${content}</a>`;
+        return `<a href="#${id}" class="more-card">${content}</a>`;
       })
       .join(
         "",

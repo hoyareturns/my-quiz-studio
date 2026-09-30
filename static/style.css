@@ -234,12 +234,21 @@ small {
   padding: 22px 17px;
   border-radius: 15px;
   background: #f6f8f2;
+  text-align: center;
 }
-.sidebar-note .spark {
+.mobile-access {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+}
+.mobile-access img {
   display: block;
-  font-size: 27px;
-  color: #86a553;
-  margin-bottom: 10px;
+  width: 164px;
+  max-width: 100%;
+  height: auto;
+  background: white;
 }
 .sidebar-note strong {
   font-size: 13px;
@@ -1831,14 +1840,4 @@ svg {
   .value-pause {
     flex-shrink: 0;
   }
-}
-
-.nav-item.is-disabled,
-.more-card.is-disabled {
-  opacity: 0.42;
-  cursor: not-allowed;
-}
-.nav-item.is-disabled:hover {
-  background: transparent;
-  color: #71817b;
 }
